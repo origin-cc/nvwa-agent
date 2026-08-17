@@ -72,6 +72,9 @@ def _run_task(task_id: str) -> None:
 
     def _execute() -> None:
         nonlocal answer, error_code, error_msg
+        # 新线程不继承父线程 ContextVar，需重新绑定当前任务上下文，
+        # 否则 agent:think / tool:* 事件会落回默认 "system" task_id。
+        taskctx.set_current_task(task_id)
         try:
             event_bus.publish("task:update", {
                 "task_id": task_id, "status": "running", "step_desc": "意图识别中",

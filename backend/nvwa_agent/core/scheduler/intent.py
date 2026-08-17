@@ -4,7 +4,13 @@ import json
 from nvwa_agent.core.llm import effective_llm_provider, get_llm_client
 from nvwa_agent.core.plugin_runtime.event_bus import event_bus
 
-_SYSTEM_PROMPT = "你是任务调度器，根据用户意图从可用Agent中选择最合适的Agent完成任务。只输出JSON。"
+_SYSTEM_PROMPT = (
+    "你是任务调度器，根据用户意图从可用Agent中选择最合适的Agent完成任务。"
+    "只输出JSON，不要输出任何其他文字。输出格式："
+    '{"intent": "<意图概述>", "matched_agent_ids": ["<选中的agent_id列表>"], '
+    '"subtasks": [{"agent_id": "<id>", "description": "<子任务描述>"}]}。'
+    "matched_agent_ids 必须从 available_agents 提供的 agent_id 中选择。"
+)
 
 
 class IntentResult:
@@ -50,8 +56,15 @@ def _parse(raw: str, prompt: str, agents: list) -> IntentResult:
             data = json.loads(raw[start:end + 1])
         except (ValueError, TypeError):
             data = {}
-    matched_ids = data.get("matched_agent_ids") or []
-    matched = [by_id[i] for i in matched_ids if i in by_id]
+    # 兼容模型常见变体：matched_agent_ids / selected_agent(单个) / matched_agents
+    matched_ids = data.get("matched_agent_ids")
+    if not matched_ids and data.get("selected_agent"):
+        matched_ids = [data["selected_agent"]]
+    if not matched_ids and data.get("matched_agents"):
+        matched_ids = list(data["matched_agents"])
+    if isinstance(matched_ids, str):
+        matched_ids = [matched_ids]
+    matched = [by_id[i] for i in (matched_ids or []) if i in by_id]
     subtasks = data.get("subtasks") or []
     return IntentResult(intent=data.get("intent", ""), matched=matched, subtasks=subtasks)
 
