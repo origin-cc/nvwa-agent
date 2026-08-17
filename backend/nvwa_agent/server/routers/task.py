@@ -90,9 +90,12 @@ def get_task(task_id: str, db=Depends(get_db)):
 
 @router.get("/api/v1/task/{task_id}/log")
 def get_task_log(task_id: str, db=Depends(get_db)):
-    """该任务全部 session_event_log 事件（按时间线），供任务回放。"""
-    if db.get(TaskRecord, task_id) is None:
-        raise ApiError("NOT_FOUND", f"任务 {task_id} 不存在")
+    """该任务全部 session_event_log 事件（按时间线），供任务回放。
+
+    会话删除后 task_record 级联删除，日志保留悬空 task_id 供审计回放
+    （PRD 3.5.2/§6.2-8）：任务不存在时仍返回日志（可为空），不报404。
+    """
+    task = db.get(TaskRecord, task_id)
     rows = (
         db.query(SessionEventLog)
         .filter(SessionEventLog.task_id == task_id)
@@ -108,7 +111,11 @@ def get_task_log(task_id: str, db=Depends(get_db)):
         }
         for r in rows
     ]
-    return {"task_id": task_id, "events": events}
+    return {
+        "task_id": task_id,
+        "task_deleted": task is None,
+        "events": events,
+    }
 
 
 def _task_brief(row: TaskRecord) -> dict:

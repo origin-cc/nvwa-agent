@@ -40,7 +40,13 @@ async def lifespan(app: FastAPI):
     event_bus.bind_loop(asyncio.get_running_loop())
 
     import threading
-    threading.Thread(target=scan_and_reconcile, kwargs={"initial": True},
+
+    def _recover_and_presets():
+        scan_and_reconcile(initial=True)
+        from nvwa_agent.core.snapshot import ensure_preset_snapshots
+        ensure_preset_snapshots()  # 预置快照依赖插件扫描结果，必须串行在后
+
+    threading.Thread(target=_recover_and_presets,
                      daemon=True, name="nvwa-plugin-recover").start()
 
     def _kb_reconcile():

@@ -6,6 +6,7 @@ from nvwa_agent.server.routers import (
     files,
     knowledge,
     plugins,
+    snapshot,
     system_config,
     task,
 )
@@ -14,6 +15,7 @@ from nvwa_agent.server import sse
 _ALL_ROUTERS = (
     system_config.router,
     plugins.router,
+    snapshot.router,
     conversation.router,
     task.router,
     files.router,

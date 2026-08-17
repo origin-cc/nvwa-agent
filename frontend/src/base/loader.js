@@ -2,12 +2,17 @@
 // URL 规则：/api/v1/plugins/static/{plugin_id}/{ui.entry相对路径}
 const moduleCache = new Map() // pluginId -> { version, module }
 
+// 会话级防缓存：同一页面会话内 URL 稳定（模块不重复执行）；页面刷新后 URL 变化，
+// 强制回源拉取最新插件文件（开发期插件文件随时修改，绕过浏览器模块缓存）
+const BOOT_ID = Date.now()
+
 function normalizeEntry(entry) {
   return String(entry || '').replace(/^\.\//, '').replace(/^\/+/, '')
 }
 
 export function pluginModuleUrl(meta) {
-  return `/api/v1/plugins/static/${meta.plugin_id}/${normalizeEntry(meta.ui && meta.ui.entry)}`
+  const entry = normalizeEntry(meta.ui && meta.ui.entry)
+  return `/api/v1/plugins/static/${meta.plugin_id}/${entry}?__nvwa=${BOOT_ID}`
 }
 
 export async function loadModule(meta) {

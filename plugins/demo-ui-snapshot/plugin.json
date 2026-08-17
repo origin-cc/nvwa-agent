@@ -1,0 +1,14 @@
+{
+  "id": "demo-ui-snapshot",
+  "name": "快照管理",
+  "version": "1.0.0",
+  "type": "ui_component_plugin",
+  "description": "挂载到对话页 chat:side-panel 插槽的组件插件：快照保存/加载/删除/导出/导入（缺失插件告警）",
+  "author": "nvwa-agent",
+  "dependencies": [],
+  "priority": 40,
+  "ui": {
+    "entry": "./index.js",
+    "target_slot": "chat:side-panel"
+  }
+}

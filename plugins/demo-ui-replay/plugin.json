@@ -1,0 +1,15 @@
+{
+  "id": "demo-ui-replay",
+  "name": "任务回放",
+  "version": "1.0.0",
+  "type": "ui_page_plugin",
+  "description": "任务回放页：任务列表 + session_event_log 事件时间线回放（v0.1-alpha 基础版）",
+  "author": "nvwa-agent",
+  "dependencies": [],
+  "priority": 30,
+  "ui": {
+    "entry": "./index.js",
+    "route_path": "/replay",
+    "slots": []
+  }
+}
