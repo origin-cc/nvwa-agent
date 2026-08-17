@@ -1,0 +1,13 @@
+{
+  "id": "demo-file-tool",
+  "name": "示例文件读取工具",
+  "version": "1.0.0",
+  "type": "backend_tool",
+  "description": "全局工具：读取白名单目录内文本文件内容（txt/md等），供Agent处理用户上传附件",
+  "author": "nvwa-agent",
+  "dependencies": [],
+  "priority": 50,
+  "lifecycle": {
+    "on_load": "./main.py::on_load"
+  }
+}

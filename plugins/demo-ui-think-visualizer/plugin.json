@@ -1,0 +1,14 @@
+{
+  "id": "demo-ui-think-visualizer",
+  "name": "思考可视化组件",
+  "version": "1.0.0",
+  "type": "ui_component_plugin",
+  "description": "挂载到对话页 chat:side-panel 插槽的组件插件：实时展示任务事件时间线（由 demo-agent-plugin 绑定联动）",
+  "author": "nvwa-agent",
+  "dependencies": [],
+  "priority": 50,
+  "ui": {
+    "entry": "./index.js",
+    "target_slot": "chat:side-panel"
+  }
+}

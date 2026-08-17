@@ -1,0 +1,15 @@
+{
+  "id": "demo-ui-tools",
+  "name": "工具资源",
+  "version": "1.0.0",
+  "type": "ui_page_plugin",
+  "description": "工具资源管理页：全局/私有工具清单、调用名、参数Schema、启停状态与归属Agent展示",
+  "author": "nvwa-agent",
+  "dependencies": [],
+  "priority": 30,
+  "ui": {
+    "entry": "./index.js",
+    "route_path": "/tools",
+    "slots": []
+  }
+}

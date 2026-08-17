@@ -1,0 +1,15 @@
+{
+  "id": "demo-ui-chat",
+  "name": "示例对话页",
+  "version": "1.0.0",
+  "type": "ui_page_plugin",
+  "description": "通用对话页面插件：会话管理、任务提交、流式思考与最终答案渲染、任务历史回放",
+  "author": "nvwa-agent",
+  "dependencies": [],
+  "priority": 50,
+  "ui": {
+    "entry": "./index.js",
+    "route_path": "/chat",
+    "slots": ["chat:side-panel"]
+  }
+}

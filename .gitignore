@@ -1,1 +1,23 @@
 dev-doc/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+backend/.deps/
+
+# Node
+node_modules/
+frontend/dist/
+
+# 运行时数据（SQLite/上传文件/向量索引/日志）
+data/
+plugins/*/dist/*.map
+
+# IDE / 系统
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

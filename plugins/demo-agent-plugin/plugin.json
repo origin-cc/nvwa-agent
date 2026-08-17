@@ -1,0 +1,22 @@
+{
+  "id": "demo-agent-plugin",
+  "name": "示例问答智能体",
+  "version": "1.0.0",
+  "type": "backend_agent",
+  "bind_ui_plugin_id": "demo-ui-think-visualizer",
+  "description": "通用问答示例Agent：ReAct单循环图，可调用全局工具，流式输出思考与回答",
+  "author": "nvwa-agent",
+  "dependencies": [],
+  "priority": 50,
+  "private_tool_ids": [],
+  "model_params": {
+    "temperature": 0.7,
+    "max_tokens": 2048
+  },
+  "lifecycle": {
+    "on_load": "./main.py::on_load",
+    "on_activate": "./main.py::on_activate",
+    "on_deactivate": "./main.py::on_deactivate",
+    "on_unload": "./main.py::on_unload"
+  }
+}

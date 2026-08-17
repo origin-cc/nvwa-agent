@@ -1,0 +1,15 @@
+{
+  "id": "demo-ui-config",
+  "name": "系统配置",
+  "version": "1.0.0",
+  "type": "ui_page_plugin",
+  "description": "系统全局配置编辑页：查看/修改系统参数，restart_required 项保存时醒目提示",
+  "author": "nvwa-agent",
+  "dependencies": [],
+  "priority": 30,
+  "ui": {
+    "entry": "./index.js",
+    "route_path": "/config",
+    "slots": []
+  }
+}
