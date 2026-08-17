@@ -13,6 +13,7 @@ from nvwa_agent.models.plugin import AgentPlugin, ToolConfig, UiPlugin
 from nvwa_agent.sdk.context import (
     BaseEventEmitter,
     BaseFileAccessor,
+    BaseKnowledgeAccessor,
     BaseLlmClient,
     BasePluginLogger,
     BaseToolCaller,
@@ -118,6 +119,19 @@ class FileAccessorImpl(BaseFileAccessor):
         return sorted(p.name for p in self._check(path).iterdir())
 
 
+class KnowledgeAccessorImpl(BaseKnowledgeAccessor):
+    """知识库检索（§12.4）：Embedding 不可用时抛出友好错误。"""
+
+    def search(self, query: str, top_k: int = 5) -> list[dict]:
+        from nvwa_agent.core.knowledge.embedding import EmbeddingUnavailable
+        from nvwa_agent.core.knowledge.service import get_knowledge_service
+
+        try:
+            return get_knowledge_service().search(query, top_k=top_k)
+        except EmbeddingUnavailable as exc:
+            raise RuntimeError(f"知识库检索不可用：{exc}") from exc
+
+
 class PluginLoggerImpl(BasePluginLogger):
     """插件日志器：自动携带 plugin_id 前缀，写入 backend_plugin-*.log。"""
 
@@ -162,4 +176,5 @@ def build_context(meta) -> PluginContext:
         events=EventEmitterImpl(meta.plugin_id),
         fs=FileAccessorImpl(),
         logger=PluginLoggerImpl(meta.plugin_id),
+        kb=KnowledgeAccessorImpl(),
     )

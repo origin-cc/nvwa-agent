@@ -1,9 +1,10 @@
-"""路由注册汇总（M2 完成：配置/插件/会话/任务/文件/SSE；快照 M7、知识库 M6 接入）。"""
+"""路由注册汇总：配置/插件/会话/任务/文件/知识库/SSE（快照 M7 接入）。"""
 from fastapi import FastAPI
 
 from nvwa_agent.server.routers import (
     conversation,
     files,
+    knowledge,
     plugins,
     system_config,
     task,
@@ -16,6 +17,7 @@ _ALL_ROUTERS = (
     conversation.router,
     task.router,
     files.router,
+    knowledge.router,
     sse.router,
 )
 

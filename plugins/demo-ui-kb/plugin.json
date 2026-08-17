@@ -1,0 +1,15 @@
+{
+  "id": "demo-ui-kb",
+  "name": "知识库管理",
+  "version": "1.0.0",
+  "type": "ui_page_plugin",
+  "description": "知识库管理页：文档上传（txt/md/pdf）、解析向量化状态轮询、失败原因展示、文档删除",
+  "author": "nvwa-agent",
+  "dependencies": [],
+  "priority": 35,
+  "ui": {
+    "entry": "./index.js",
+    "route_path": "/knowledge",
+    "slots": []
+  }
+}

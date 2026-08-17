@@ -48,6 +48,14 @@ class BaseFileAccessor(ABC):
     def list_dir(self, path: str) -> list[str]: ...
 
 
+class BaseKnowledgeAccessor(ABC):
+    """知识库检索访问器（§12.4）：全局知识库对所有插件只读开放。"""
+
+    @abstractmethod
+    def search(self, query: str, top_k: int = 5) -> list[dict]:
+        """返回 [{chunk_id, doc_id, file_name, chunk_index, content, score}]。"""
+
+
 class BasePluginLogger(ABC):
     """插件日志器：自动携带 plugin_id，写入 backend_plugin-*.log（§15）。"""
 
@@ -81,6 +89,7 @@ class PluginContext:
         events: BaseEventEmitter,
         fs: BaseFileAccessor,
         logger: BasePluginLogger,
+        kb: BaseKnowledgeAccessor | None = None,
     ) -> None:
         self.plugin_id = plugin_id
         self.config = config          # plugin.json config 与用户面板修改值的合并配置
@@ -89,3 +98,4 @@ class PluginContext:
         self.events = events
         self.fs = fs
         self.logger = logger
+        self.kb = kb                  # 知识库只读访问器（None 时知识库能力不可用）

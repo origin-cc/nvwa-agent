@@ -43,6 +43,12 @@ async def lifespan(app: FastAPI):
     threading.Thread(target=scan_and_reconcile, kwargs={"initial": True},
                      daemon=True, name="nvwa-plugin-recover").start()
 
+    def _kb_reconcile():
+        from nvwa_agent.core.knowledge.service import get_knowledge_service
+        get_knowledge_service().reconcile_on_boot()
+
+    threading.Thread(target=_kb_reconcile, daemon=True, name="nvwa-kb-reconcile").start()
+
     from nvwa_agent.core.scheduler import start_worker
     start_worker()
 

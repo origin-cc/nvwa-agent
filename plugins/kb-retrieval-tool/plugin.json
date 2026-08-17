@@ -1,0 +1,13 @@
+{
+  "id": "kb-retrieval-tool",
+  "name": "知识库检索工具",
+  "version": "1.0.0",
+  "type": "backend_tool",
+  "description": "全局知识库语义检索工具：FAISS 向量检索返回最相关文档切片原文（含来源文件与相似度）",
+  "author": "nvwa-agent",
+  "dependencies": [],
+  "priority": 50,
+  "lifecycle": {
+    "on_load": "./main.py::on_load"
+  }
+}
