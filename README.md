@@ -39,7 +39,7 @@ Architecture reference: DeepSeek-Harness https://github.com/deepseek-ai/deepseek
 
 ## 快速开始
 
-> 完整部署步骤见 [NvwaAgent-需求PRD.md](./NvwaAgent-需求PRD.md) 与 [NvwaAgent‑详细设计.md](./NvwaAgent‑详细设计.md)。以下为概要流程。
+> 完整部署步骤见 [dev-doc/NvwaAgent-需求PRD.md](./dev-doc/NvwaAgent-需求PRD.md) 与 [dev-doc/NvwaAgent‑详细设计.md](./dev-doc/NvwaAgent‑详细设计.md)。
 
 ### 环境要求
 
@@ -47,35 +47,48 @@ Architecture reference: DeepSeek-Harness https://github.com/deepseek-ai/deepseek
 - 前端：Node.js（Vite 构建）
 - 浏览器：Chrome / Edge 最新版
 
-### 安装与启动（概要）
+### 安装与启动
 
 ```bash
-# 1. 后端依赖
-pip install -r requirements.txt
+# 1. 后端依赖（安装到 backend/.deps，见 backend/requirements.txt）
+cd backend
+pip install -r requirements.txt --target .deps
 
-# 2. 前端依赖
+# 2. 启动后端（FastAPI，http://127.0.0.1:8000）
+$env:PYTHONPATH="$PWD\.deps"   # Windows PowerShell；Linux/macOS: export PYTHONPATH=$PWD/.deps
+python -m uvicorn nvwa_agent.app:create_app --factory --host 127.0.0.1 --port 8000
+
+# 3. 启动前端（另开终端，Vite dev server）
+cd frontend
 npm install
-
-# 3. 配置系统参数（写入 system_config）
-#    - vllm_model_path：vLLM 模型本地路径
-#    - embedding_model_path：知识库 Embedding 模型路径
-#    - mock_mode_enabled：true 时无 GPU 即可调试插件框架
-
-# 4. 启动后端与前端（开发模式）
-#    后端 FastAPI 服务 + 前端 Vite dev server
+npm run dev
 ```
 
-> 无 GPU 环境调试：将 `mock_mode_enabled` 置为 `true`，系统不调用真实 vLLM，直接返回带 `[MOCK]` 标记的模拟应答，用于验证插件框架逻辑、任务链路、SSE 事件与前端联动。
+首次启动自动建表（SQLite `data/nvwa_agent.db`）、初始化默认配置并扫描 `plugins/` 目录。
+
+### 推理后端切换（system_config）
+
+| 配置 | 说明 |
+| --- | --- |
+| `llm_provider=mock` 或 `mock_mode_enabled=true` | 模拟推理，无 GPU 调试插件框架与任务链路 |
+| `llm_provider=api` | OpenAI 兼容接口（如 DeepSeek），配置 `api_base_url` / `api_key` / `api_model` |
+| `llm_provider=vllm` | 本地 vLLM（配置 `vllm_model_path`） |
+
+### 运行测试
+
+```bash
+cd backend
+$env:PYTHONPATH="$PWD\.deps"; python -m pytest tests -q   # 42 个用例，临时库隔离、无网络请求
+```
 
 ## 插件开发
 
 前后端插件统一遵循 `plugin.json` 元数据规范，放入 `./plugins/` 目录，系统扫描后即可识别。
 
+**完整的插件开发规范（plugin.json 字段、后端 SDK 代码契约、UI 插件导出契约、SSE 事件契约、示例说明）见 [dev-doc/NvwaAgent-插件开发指南.md](./dev-doc/NvwaAgent-插件开发指南.md)。**
+
 - 后端插件类型：`backend_agent` / `backend_tool`
 - 前端插件类型：`ui_page_plugin` / `ui_component_plugin`
-- 后端插件 Python 代码契约（SDK）：见详细设计 §3.7
-- 前端插件导出契约：见详细设计 §4.2
-- SSE 事件契约：见 PRD 附录 C 与详细设计 §8
 
 插件目录示例：
 
@@ -92,8 +105,10 @@ plugins/
 
 ## 文档
 
-- [NvwaAgent-需求PRD.md](./NvwaAgent-需求PRD.md) — 产品需求（做什么）
-- [NvwaAgent‑详细设计.md](./NvwaAgent‑详细设计.md) — 工程详细设计（如何实现）
+- [dev-doc/NvwaAgent-需求PRD.md](./dev-doc/NvwaAgent-需求PRD.md) — 产品需求（做什么）
+- [dev-doc/NvwaAgent‑详细设计.md](./dev-doc/NvwaAgent‑详细设计.md) — 工程详细设计（如何实现）
+- [dev-doc/NvwaAgent-实施计划.md](./dev-doc/NvwaAgent-实施计划.md) — 里程碑实施计划
+- [dev-doc/NvwaAgent-插件开发指南.md](./dev-doc/NvwaAgent-插件开发指南.md) — 插件开发者文档（plugin.json / SDK / SSE 契约）
 
 ## 项目边界（不做什么）
 
