@@ -14,6 +14,19 @@ function newMsg(kind, content, extra) {
   return Object.assign({ id: `m${_msgSeq}`, kind, content, ts: Date.now() }, extra || {})
 }
 
+// 最终回答：若上一条是同任务的"思考"气泡（agent:think 流式内容=模型输出），
+// 直接升级为"回答"，避免同一份答案在思考区+回答区重复显示（无 reasoning 模型二者同源）。
+function pushAssistant(list, content, taskId) {
+  const last = list[list.length - 1]
+  if (last && last.kind === 'think' && last.taskId === taskId) {
+    if (content) {
+      return [...list.slice(0, -1), Object.assign({}, last, { kind: 'assistant', content })]
+    }
+    return list // 结果为空时保留思考气泡内容
+  }
+  return [...list, newMsg('assistant', content || '(空结果)', { taskId })]
+}
+
 function kindTag(kind) {
   const map = {
     user: ['我', 'blue'],
@@ -77,7 +90,7 @@ function PageComponent({ nvwa, slots }) {
     try {
       const listData = await nvwa.api.get(`/api/v1/task/list?conversation_id=${encodeURIComponent(conversationId)}&page_size=100`)
       const tasks = (listData.tasks || []).slice().reverse() // created_at desc -> 时间正序
-      const rebuilt = []
+      let rebuilt = []
       for (const t of tasks) {
         rebuilt.push(newMsg('user', t.input_prompt, { taskId: t.task_id }))
         let logEvents = []
@@ -102,7 +115,7 @@ function PageComponent({ nvwa, slots }) {
             rebuilt.push(newMsg('tool', `失败：${p.error_msg}`, { toolId: p.tool_id, taskId: t.task_id, status: 'failed' }))
           }
         }
-        if (t.status === 'finish' && t.result) rebuilt.push(newMsg('assistant', t.result, { taskId: t.task_id }))
+        if (t.status === 'finish' && t.result) rebuilt = pushAssistant(rebuilt, t.result, t.task_id)
         if (t.status === 'failed') rebuilt.push(newMsg('error', t.error_msg || '任务执行失败', { taskId: t.task_id }))
       }
       setMessages(rebuilt)
@@ -153,7 +166,7 @@ function PageComponent({ nvwa, slots }) {
     }))
     offs.push(nvwa.events.on('task:finish', (p) => {
       if (!isCurrent(p)) return
-      setMessages((prev) => [...prev, newMsg('assistant', p.result || '(空结果)', { taskId: p.task_id })])
+      setMessages((prev) => pushAssistant(prev, p.result, p.task_id))
       setSending(false)
       taskRef.current = null
       refreshConversations()
