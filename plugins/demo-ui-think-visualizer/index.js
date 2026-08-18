@@ -1,22 +1,34 @@
 // 思考可视化组件插件（手写原生 ES Module）
 // 挂载到 demo-ui-chat 声明的 chat:side-panel 插槽（§4.8）
 // 展示最近任务的事件时间线：task:start / agent:think / tool:call / tool:result / tool:finish
+// v1.0：关键状态写入 nvwa.state 供回放，并订阅 nvwa:replay-state 复现组件状态（§5）
 
 const { useState, useEffect, useRef } = window.React
 const h = window.React.createElement
 const { Tag, Empty, Typography, Tooltip } = window.antd
 
 const MAX_ITEMS = 200
+const PERSIST_ITEMS = 20  // 回放只持久化最近 N 条
 
 function PageComponent({ nvwa }) {
   const [taskId, setTaskId] = useState(null)
   const [items, setItems] = useState([])
   const seqRef = useRef(0)
+  const pluginId = nvwa.pluginId
 
   useEffect(() => {
+    const persist = (nextTaskId, nextItems) => {
+      try {
+        nvwa.state.save({ taskId: nextTaskId, items: nextItems.slice(-PERSIST_ITEMS) })
+      } catch (e) { /* 持久化失败不影响实时展示 */ }
+    }
     const push = (text, tag, color) => {
       seqRef.current += 1
-      setItems((prev) => [...prev, { seq: seqRef.current, text, tag, color }].slice(-MAX_ITEMS))
+      setItems((prev) => {
+        const next = [...prev, { seq: seqRef.current, text, tag, color }].slice(-MAX_ITEMS)
+        persist(taskId, next)
+        return next
+      })
     }
     const offs = [
       nvwa.events.on('task:start', (p) => {
@@ -34,6 +46,13 @@ function PageComponent({ nvwa }) {
       nvwa.events.on('tool:error', (p) => push(`工具失败：${p.error_msg || ''}`, 'tool:error', 'red')),
       nvwa.events.on('task:finish', () => { push('任务完成', 'task:finish', 'green'); setTaskId(null) }),
       nvwa.events.on('task:error', (p) => { push(`任务失败：${p.error_code || ''}`, 'task:error', 'red'); setTaskId(null) }),
+      // 回放状态注入（§5.4）：按 plugin_id 匹配后复现组件渲染状态
+      nvwa.events.on('nvwa:replay-state', (payload) => {
+        if (payload && payload.plugin_id === pluginId && payload.state) {
+          setTaskId(payload.state.taskId || null)
+          setItems(payload.state.items || [])
+        }
+      }),
     ]
     return () => offs.forEach((off) => off && off())
   }, [])

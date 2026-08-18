@@ -13,7 +13,7 @@ from nvwa_agent.database import get_db, session_scope
 from nvwa_agent.models.knowledge import KnowledgeDoc
 from nvwa_agent.server.errors import ApiError
 
-router = APIRouter()
+router = APIRouter(tags=["知识库"])
 
 
 @router.post("/api/v1/knowledge/upload")

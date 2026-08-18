@@ -1,10 +1,11 @@
-// 任务回放页面插件（手写原生 ES Module，v0.1-alpha 基础版）
-// 左：任务列表（/task/list 分页）；右：任务详情 + session_event_log 事件时间线（/task/{id}/log）
-// 已删除任务（悬空task_id）仅展示日志事件，不展示任务详情（PRD 3.5.2）
+// 任务回放页面插件（手写原生 ES Module，v1.0 增强版）
+// 左：任务列表（/task/list 分页）
+// 右：任务详情 + 事件时间线（/task/{id}/log）+ 组件状态回放（/task/{id}/ui-state-snapshots）
+// 组件状态回放：按 event_seq 顺序注入快照到组件命名空间，复现组件渲染状态（§5）
 
-const { useState, useEffect, useCallback } = window.React
+const { useState, useEffect, useCallback, useRef } = window.React
 const h = window.React.createElement
-const { Table, Button, Tag, Typography, Space, Timeline, Empty, Spin, message, Tooltip, Pagination } = window.antd
+const { Table, Button, Tag, Typography, Space, Timeline, Empty, Spin, message, Tooltip, Pagination, Card, Select, Slider, Divider } = window.antd
 
 const STATUS_COLOR = {
   pending: 'default', running: 'processing', success: 'success',
@@ -79,6 +80,11 @@ function PageComponent({ nvwa }) {
   const [events, setEvents] = useState([])
   const [logLoading, setLogLoading] = useState(false)
   const [taskDeleted, setTaskDeleted] = useState(false)
+  const [snapshots, setSnapshots] = useState([])
+  const [playIdx, setPlayIdx] = useState(-1)       // -1 未播放
+  const [playing, setPlaying] = useState(false)
+  const [speed, setSpeed] = useState(1)
+  const playTimerRef = useRef(null)
   const pageSize = 15
 
   const refresh = useCallback(async (p = 1) => {
@@ -97,19 +103,49 @@ function PageComponent({ nvwa }) {
 
   useEffect(() => { refresh(1) }, [])
 
+  const stopPlay = useCallback(() => {
+    setPlaying(false)
+    setPlayIdx(-1)
+    if (playTimerRef.current) clearTimeout(playTimerRef.current)
+  }, [])
+
   const openTask = async (task) => {
+    stopPlay()
     setSelected(task)
+    setSnapshots([])
     setLogLoading(true)
     try {
       const data = await nvwa.api.get(`/api/v1/task/${task.task_id}/log`)
       setEvents(mergeEvents(data.events || []))
       setTaskDeleted(Boolean(data.task_deleted))
+      const snap = await nvwa.api.get(`/api/v1/task/${task.task_id}/ui-state-snapshots`)
+      setSnapshots(snap.snapshots || [])
     } catch (err) {
       message.error(`加载事件日志失败：${err.message}`)
       setEvents([])
     } finally {
       setLogLoading(false)
     }
+  }
+
+  // 播放推进：按 event_seq 顺序注入快照状态（§5.4）
+  useEffect(() => {
+    if (!playing || playIdx < 0 || playIdx >= snapshots.length) {
+      if (playing && playIdx >= snapshots.length) setPlaying(false)
+      return
+    }
+    const snap = snapshots[playIdx]
+    if (snap && nvwa.replay) {
+      try { nvwa.replay.inject(snap.plugin_id, snap.state) } catch (e) { /* 注入失败忽略 */ }
+    }
+    playTimerRef.current = setTimeout(() => setPlayIdx((i) => i + 1), 1000 / speed)
+    return () => { if (playTimerRef.current) clearTimeout(playTimerRef.current) }
+  }, [playing, playIdx, snapshots, speed])
+
+  const startPlay = () => {
+    if (!snapshots.length) { message.info('该任务无组件状态快照'); return }
+    setPlayIdx(0)
+    setPlaying(true)
   }
 
   const columns = [
@@ -138,6 +174,8 @@ function PageComponent({ nvwa }) {
     }
   })
 
+  const currentSnap = playIdx >= 0 && playIdx < snapshots.length ? snapshots[playIdx] : null
+
   return h('div', { style: { display: 'flex', gap: 12, height: 'calc(100vh - 32px)' } },
     // 左：任务列表
     h('div', { style: { width: 420, flexShrink: 0, display: 'flex', flexDirection: 'column' } },
@@ -155,7 +193,7 @@ function PageComponent({ nvwa }) {
           showTotal: (n) => `共 ${n} 条`,
           onChange: (p) => refresh(p),
         }))),
-    // 右：时间线
+    // 右：时间线 + 组件状态回放
     h('div', { style: { flex: 1, minWidth: 0, borderLeft: '1px solid #f0f0f0', paddingLeft: 16, overflowY: 'auto' } },
       !selected
         ? h(Empty, { style: { marginTop: 120 }, description: '左侧选择一个任务查看事件时间线' })
@@ -172,8 +210,37 @@ function PageComponent({ nvwa }) {
                     selected.result ? h('div', { style: { marginTop: 4 } }, h('b', null, '结果：'), selected.result) : null)),
             events.length === 0 && !logLoading
               ? h(Empty, { description: '该任务暂无事件日志' })
-              : h(Timeline, { items: timelineItems }))),
-  )
+              : h(Timeline, { items: timelineItems }),
+            h(Divider, null),
+            // 组件状态回放面板（§5.4）
+            h(Card, {
+              size: 'small', title: '组件状态回放',
+              extra: h(Typography.Text, { type: 'secondary', style: { fontSize: 12 } },
+                `共 ${snapshots.length} 个快照`),
+            },
+              snapshots.length === 0
+                ? h(Empty, { image: Empty.PRESENTED_IMAGE_SIMPLE, description: '该任务无组件状态快照（任务执行期间由基座自动收集）' })
+                : h('div', null,
+                    h(Space, { style: { marginBottom: 8 } },
+                      h(Button, { size: 'small', type: 'primary', disabled: playing, onClick: startPlay }, '播放'),
+                      h(Button, { size: 'small', disabled: !playing, onClick: () => setPlaying(false) }, '暂停'),
+                      h(Button, { size: 'small', onClick: stopPlay }, '停止'),
+                      h(Select, {
+                        size: 'small', value: speed, style: { width: 90 },
+                        onChange: (v) => setSpeed(v),
+                        options: [
+                          { value: 1, label: '1x' }, { value: 2, label: '2x' },
+                          { value: 4, label: '4x' }, { value: 8, label: '8x' },
+                        ],
+                      })),
+                    h('div', { style: { fontSize: 12, marginBottom: 4 } },
+                      currentSnap
+                        ? h('span', null,
+                            `event_seq=${currentSnap.event_seq} · ${currentSnap.event_type || '-'} · ${currentSnap.plugin_id}`)
+                        : '点击「播放」开始按时间轴复现组件状态'),
+                    h('div', { style: { fontSize: 12, wordBreak: 'break-all', whiteSpace: 'pre-wrap' } },
+                      currentSnap ? JSON.stringify(currentSnap.state) : '—')))),
+  ))
 }
 
 export { PageComponent }

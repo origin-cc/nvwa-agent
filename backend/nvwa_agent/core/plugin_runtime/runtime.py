@@ -13,6 +13,7 @@ from nvwa_agent.core.plugin_runtime.loader import (
 from nvwa_agent.core.plugin_runtime.meta import PluginMeta
 from nvwa_agent.core.plugin_runtime import runtime_db
 from nvwa_agent.sdk.base import ToolResult
+from nvwa_agent.sdk.context import FilePermissionError
 
 _log = get_core_logger()
 
@@ -38,6 +39,7 @@ class PluginRuntime:
         self._metas: dict[str, PluginMeta] = {}
         self._states: dict[str, str] = {}
         self._errors: dict[str, str] = {}
+        self._error_stacks: dict[str, str] = {}
         self._instances: dict[str, object] = {}
         self._graphs: dict[str, object] = {}
         self._ctxs: dict[str, object] = {}
@@ -72,11 +74,13 @@ class PluginRuntime:
             if m.is_agent and self._states.get(i) == "activated"
         ]
 
-    def register_meta(self, meta: PluginMeta, state: str, error: str | None = None) -> None:
+    def register_meta(self, meta: PluginMeta, state: str, error: str | None = None,
+                      error_stack: str | None = None) -> None:
         """登记元数据与内存状态（供扫描/恢复流程使用）。"""
         self._metas[meta.plugin_id] = meta
         self._states[meta.plugin_id] = state
         self._errors[meta.plugin_id] = error or ""
+        self._error_stacks[meta.plugin_id] = error_stack or ""
 
     def drop_instance(self, plugin_id: str, run_unload_hook: bool = False) -> None:
         """移除内存实例（版本升级/卸载）；可选执行 on_unload 钩子。"""
@@ -93,12 +97,14 @@ class PluginRuntime:
 
     # ------------------------------ 生命周期 ------------------------------
     def _set(self, plugin_id: str, state: str, error: str | None = None,
-             persist: bool = True) -> None:
+             error_stack: str | None = None, persist: bool = True) -> None:
         self._states[plugin_id] = state
         self._errors[plugin_id] = error or ""
+        self._error_stacks[plugin_id] = error_stack or ""
         meta = self._metas.get(plugin_id)
         if persist and meta is not None:
-            runtime_db.db_update_state(meta.type, plugin_id, state, error_msg=error)
+            runtime_db.db_update_state(meta.type, plugin_id, state,
+                                       error_msg=error, error_stack=error_stack)
 
     def load(self, plugin_id: str, *, notify: bool = True) -> bool:
         """加载后端插件：on_load + build_graph；失败置 fault。返回是否成功。"""
@@ -118,7 +124,8 @@ class PluginRuntime:
                 self._graphs[plugin_id] = instance.build_graph(ctx)
         except PluginLoadError as exc:
             self.drop_instance(plugin_id)
-            self.mark_fault(plugin_id, exc.code, str(exc), notify=notify)
+            self.mark_fault(plugin_id, exc.code, str(exc), notify=notify,
+                            error_stack=getattr(exc, "error_stack", None))
             return False
         self._ctxs[plugin_id] = ctx
         self._instances[plugin_id] = instance
@@ -157,7 +164,8 @@ class PluginRuntime:
             try:
                 execute_hook(meta, "on_activate", self._ctxs.get(plugin_id))
             except PluginLoadError as exc:
-                self.mark_fault(plugin_id, exc.code, str(exc))
+                self.mark_fault(plugin_id, exc.code, str(exc),
+                                error_stack=getattr(exc, "error_stack", None))
                 raise PluginOpError("PLUGIN_STATE_INVALID", str(exc)) from exc
         self._set(plugin_id, "activated")
         event_bus.publish("plugin:activated", {"plugin_id": plugin_id})
@@ -175,7 +183,8 @@ class PluginRuntime:
             try:
                 execute_hook(meta, "on_deactivate", self._ctxs.get(plugin_id))
             except PluginLoadError as exc:
-                self.mark_fault(plugin_id, exc.code, str(exc))
+                self.mark_fault(plugin_id, exc.code, str(exc),
+                                error_stack=getattr(exc, "error_stack", None))
                 raise PluginOpError("PLUGIN_STATE_INVALID", str(exc)) from exc
         self._set(plugin_id, "deactivated")
         event_bus.publish("plugin:deactivated", {"plugin_id": plugin_id})
@@ -199,9 +208,11 @@ class PluginRuntime:
             self._cascade_ui_binding(meta, activate=False, only_if_bound=True)
 
     def mark_fault(self, plugin_id: str, code: str, message: str,
-                   *, persist: bool = True, notify: bool = True) -> None:
+                   *, persist: bool = True, notify: bool = True,
+                   error_stack: str | None = None) -> None:
         """置为故障；persist=False 用于磁盘缺失场景（不修改数据库，§11 场景1）。"""
-        self._set(plugin_id, "fault", f"[{code}] {message}", persist=persist)
+        self._set(plugin_id, "fault", f"[{code}] {message}",
+                  error_stack=error_stack, persist=persist)
         if notify:
             event_bus.publish("plugin:error", {
                 "plugin_id": plugin_id, "error_msg": message, "error_code": code,
@@ -266,6 +277,12 @@ class PluginRuntime:
         instance = self._instances.get(meta.plugin_id)
         try:
             result: ToolResult = instance.execute(self._ctxs.get(meta.plugin_id), args or {})
+        except FilePermissionError as exc:
+            event_bus.publish("tool:error", {
+                "task_id": tid, "tool_id": meta.plugin_id,
+                "error_msg": str(exc), "error_code": "FILE_PERMISSION_DENIED",
+            })
+            return {"ok": False, "error_code": "FILE_PERMISSION_DENIED", "error_msg": str(exc)}
         except Exception as exc:
             _log.exception("工具 %s 执行异常", meta.plugin_id)
             event_bus.publish("tool:error", {
@@ -356,6 +373,9 @@ class PluginRuntime:
                 "version": row.version,
                 "state": self._states.get(row.id) or row.state,
                 "error_msg": self._errors.get(row.id) or row.error_msg,
+                "error_stack": self._error_stacks.get(row.id)
+                or getattr(row, "error_stack", None),
+                "file_permissions": getattr(meta, "file_permissions", None) or {},
                 "priority": getattr(row, "priority", 50) or 50,
                 "dependencies": deps,
                 "bind_ui_plugin_id": getattr(row, "bind_ui_plugin_id", None),

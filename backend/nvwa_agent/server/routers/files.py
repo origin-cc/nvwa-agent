@@ -10,7 +10,7 @@ from nvwa_agent.database import session_scope
 from nvwa_agent.models.misc import UploadedFile
 from nvwa_agent.server.errors import ApiError
 
-router = APIRouter()
+router = APIRouter(tags=["文件"])
 
 
 @router.post("/api/v1/files/upload")

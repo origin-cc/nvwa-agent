@@ -66,38 +66,61 @@ def load_snapshot(snapshot_id: int) -> dict:
 
 
 def apply_snapshot(snapshot: dict) -> dict:
-    """按快照全量覆盖当前插件状态（导入与加载共用，§11 场景3）。"""
+    """按快照全量覆盖当前插件状态（导入与加载共用，§11 场景3 + v1.0 §8）。"""
     runtime = get_runtime()
     entries = {}
     for kind in ("backend_agents", "backend_tools", "ui_plugins"):
         for entry in (snapshot.get("plugins") or {}).get(kind, []):
             entries[entry["plugin_id"]] = entry
 
-    existing = {p["plugin_id"] for p in runtime.list_plugins()}
+    existing = {p["plugin_id"]: p for p in runtime.list_plugins()}
     missing = sorted(pid for pid in entries if pid not in existing)
+    # v1.0 §8.1：插件存在但处于 fault（元数据校验/加载失败）→ 跳过
+    invalid = sorted(pid for pid in entries
+                     if pid in existing and existing[pid].get("state") == "fault")
+
     warnings = []
     if missing:
         warnings.append(f"以下插件本机不存在，已跳过：{', '.join(missing)}")
+    if invalid:
+        warnings.append(f"以下插件处于故障状态（校验/加载失败），已跳过：{', '.join(invalid)}")
+
+    # v1.0 §8.1：config 值类型与 plugin.json 默认值类型不一致 → 告警并回退默认值
+    get_meta = getattr(runtime, "get_meta", None)
+    if get_meta is not None:
+        for pid, entry in entries.items():
+            if pid in missing or pid in invalid:
+                continue
+            meta = get_meta(pid)
+            if meta is None or not getattr(meta, "config", None):
+                continue
+            cfg = entry.get("config") or {}
+            for key, default_val in meta.config.items():
+                if key in cfg and default_val is not None \
+                        and type(cfg[key]) is not type(default_val):
+                    warnings.append(f"插件 {pid} config.{key} 类型不一致，已回退默认值")
+                    cfg[key] = default_val
 
     applied, deactivated = [], []
     for pid, entry in entries.items():
-        if pid in missing:
+        if pid in missing or pid in invalid:
             continue
         target = "activated" if entry.get("enabled", False) else "deactivated"
         if _transition(runtime, pid, target):
             (applied if target == "activated" else deactivated).append(pid)
     # 全量覆盖：不在快照内且当前激活的插件一律禁用
-    for pid in sorted(existing - set(entries)):
+    for pid in sorted(set(existing) - set(entries)):
         if _transition(runtime, pid, "deactivated"):
             deactivated.append(pid)
 
     if warnings:
         for w in warnings:
             _log.warning("快照应用告警: %s", w)
-    _log.info("快照应用完成 activated=%d deactivated=%d missing=%d",
-              len(applied), len(deactivated), len(missing))
+    _log.info("快照应用完成 activated=%d deactivated=%d missing=%d invalid=%d",
+              len(applied), len(deactivated), len(missing), len(invalid))
     return {"applied": applied, "deactivated": deactivated,
-            "missing_plugin_ids": missing, "warnings": warnings}
+            "missing_plugin_ids": missing, "invalid_plugin_ids": invalid,
+            "warnings": warnings}
 
 
 def _transition(runtime, pid: str, target: str) -> bool:

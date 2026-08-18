@@ -17,6 +17,7 @@ from nvwa_agent.sdk.context import (
     BaseLlmClient,
     BasePluginLogger,
     BaseToolCaller,
+    FilePermissionError,
     PluginContext,
     ToolForbiddenError,
 )
@@ -86,37 +87,71 @@ class EventEmitterImpl(BaseEventEmitter):
 
 
 class FileAccessorImpl(BaseFileAccessor):
-    """白名单目录内文件读写（§14）：路径规范化校验，防路径穿越。"""
+    """白名单目录内文件读写（§14 + v1.0 §4 精细化权限）。
+
+    - 全局白名单为硬边界；
+    - 插件声明 file_permissions 时按 read/write/delete 操作维度精细化；
+    - 未声明 file_permissions 时继承全局白名单能力（向后兼容 v0.1）。
+    """
+
+    def __init__(self, plugin_id: str, file_permissions: dict | None = None) -> None:
+        self._plugin_id = plugin_id
+        self._perms = file_permissions or {}
 
     @staticmethod
     def _whitelist() -> list:
         return [resolve_path(p) for p in get_config("file_access_whitelist_dirs", [])]
 
     @staticmethod
-    def _check(path: str) -> object:
+    def _resolve(path: str):
         from pathlib import Path
 
         target = Path(path)
         if not target.is_absolute():
-            # 相对路径按白名单目录顺序解析（默认 ./data/uploads 在前）
             target = resolve_path(path)
-        resolved = target.resolve()
-        for base in FileAccessorImpl._whitelist():
-            if resolved == base or base in resolved.parents:
-                return resolved
-        raise PermissionError(f"路径不在白名单目录内: {path}")
+        return target.resolve()
+
+    def _check(self, path: str, op: str):
+        """§4.4 校验流程：规范化 → 全局白名单 → 插件 file_permissions。"""
+        resolved = self._resolve(path)
+        if not any(resolved == w or w in resolved.parents for w in self._whitelist()):
+            raise FilePermissionError(f"路径不在全局白名单目录内: {path}")
+        if self._perms:
+            if op == "read":
+                allowed = self._perms.get("read_dirs") or []
+            elif op == "write":
+                allowed = self._perms.get("write_dirs") or []
+            elif op == "delete":
+                if not self._perms.get("allow_delete"):
+                    raise FilePermissionError("插件未声明 allow_delete，禁止删除文件")
+                allowed = self._perms.get("write_dirs") or []
+            else:
+                allowed = []
+            allowed_resolved = [self._resolve(d) for d in allowed]
+            if not any(resolved == a or a in resolved.parents for a in allowed_resolved):
+                raise FilePermissionError(f"路径不在插件 {op} 权限目录内: {path}")
+        return resolved
 
     def read_text(self, path: str, encoding: str = "utf-8") -> str:
-        return self._check(path).read_text(encoding=encoding)
+        return self._check(path, "read").read_text(encoding=encoding)
 
     def write_text(self, path: str, content: str, encoding: str = "utf-8") -> str:
-        target = self._check(path)
+        target = self._check(path, "write")
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content, encoding=encoding)
         return str(target)
 
     def list_dir(self, path: str) -> list[str]:
-        return sorted(p.name for p in self._check(path).iterdir())
+        return sorted(p.name for p in self._check(path, "read").iterdir())
+
+    def delete(self, path: str) -> None:
+        target = self._check(path, "delete")
+        if target.is_file():
+            target.unlink()
+        elif target.is_dir():
+            target.rmdir()  # 仅删除空目录，避免误删
+        else:
+            raise FileNotFoundError(f"路径不存在: {path}")
 
 
 class KnowledgeAccessorImpl(BaseKnowledgeAccessor):
@@ -174,7 +209,7 @@ def build_context(meta) -> PluginContext:
         llm=LlmServiceImpl(meta.plugin_id, meta.model_params if meta.is_agent else None),
         tools=ToolCallerImpl(meta.plugin_id),
         events=EventEmitterImpl(meta.plugin_id),
-        fs=FileAccessorImpl(),
+        fs=FileAccessorImpl(meta.plugin_id, getattr(meta, "file_permissions", None)),
         logger=PluginLoggerImpl(meta.plugin_id),
         kb=KnowledgeAccessorImpl(),
     )

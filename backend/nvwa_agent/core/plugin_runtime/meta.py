@@ -21,6 +21,7 @@ class PluginMeta:
     lifecycle: dict = field(default_factory=dict)   # {hook: "./main.py::func"}
     ui: dict = field(default_factory=dict)          # {entry, route_path, slots, target_slot}
     config: dict = field(default_factory=dict)
+    file_permissions: dict = field(default_factory=dict)  # {read_dirs, write_dirs, allow_delete}
     dir_path: Path | None = None
     raw: dict = field(default_factory=dict)
 
@@ -44,6 +45,7 @@ class PluginMeta:
             lifecycle=dict(raw.get("lifecycle") or {}),
             ui=ui,
             config=dict(raw.get("config") or {}),
+            file_permissions=dict(raw.get("file_permissions") or {}),
             dir_path=dir_path,
             raw=raw,
         )

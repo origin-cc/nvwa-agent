@@ -20,7 +20,7 @@ class DemoFileTool(BaseToolPlugin):
         try:
             content = ctx.fs.read_text(path)
         except PermissionError as exc:
-            return ToolResult.failure("TOOL_FORBIDDEN", f"路径不在白名单内: {exc}")
+            return ToolResult.failure("FILE_PERMISSION_DENIED", f"文件访问越权: {exc}")
         except FileNotFoundError:
             return ToolResult.failure("TOOL_EXEC_ERROR", f"文件不存在: {path}")
         except Exception as exc:

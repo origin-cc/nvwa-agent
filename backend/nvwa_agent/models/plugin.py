@@ -23,6 +23,7 @@ class AgentPlugin(Base):
     model_params: Mapped[str | None] = mapped_column(Text)        # JSON对象
     plugin_config: Mapped[str | None] = mapped_column(Text)       # JSON对象
     error_msg: Mapped[str | None] = mapped_column(Text)
+    error_stack: Mapped[str | None] = mapped_column(Text)         # 故障完整堆栈（v1.0 §11.2）
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
@@ -41,6 +42,7 @@ class ToolConfig(Base):
     dependencies: Mapped[str | None] = mapped_column(Text)        # JSON数组
     plugin_config: Mapped[str | None] = mapped_column(Text)       # JSON对象
     error_msg: Mapped[str | None] = mapped_column(Text)
+    error_stack: Mapped[str | None] = mapped_column(Text)         # 故障完整堆栈（v1.0 §11.2）
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
@@ -63,5 +65,6 @@ class UiPlugin(Base):
     entry_path: Mapped[str | None] = mapped_column(Text)          # 编译产物入口相对路径
     plugin_config: Mapped[str | None] = mapped_column(Text)       # JSON对象
     error_msg: Mapped[str | None] = mapped_column(Text)
+    error_stack: Mapped[str | None] = mapped_column(Text)         # 故障完整堆栈（v1.0 §11.2）
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)

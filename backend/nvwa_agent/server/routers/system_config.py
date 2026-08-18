@@ -10,7 +10,7 @@ from nvwa_agent.config import (
 )
 from nvwa_agent.server.errors import ApiError
 
-router = APIRouter()
+router = APIRouter(tags=["系统配置"])
 
 
 class ConfigUpdateBody(BaseModel):

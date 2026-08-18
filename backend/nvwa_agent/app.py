@@ -68,7 +68,14 @@ async def lifespan(app: FastAPI):
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="NvwaAgent", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(
+        title="NvwaAgent",
+        version="1.0.0",
+        lifespan=lifespan,
+        docs_url="/api/v1/docs",
+        redoc_url="/api/v1/redoc",
+        openapi_url="/api/v1/openapi.json",
+    )
     from nvwa_agent.server.errors import register_error_handlers
     from nvwa_agent.server.routes import register_routes
 

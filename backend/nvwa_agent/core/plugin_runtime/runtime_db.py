@@ -19,7 +19,8 @@ def db_get_row(ptype: str, plugin_id: str):
         return db.get(_model_of(ptype), plugin_id)
 
 
-def db_upsert_meta(meta: PluginMeta, state: str, error_msg: str | None = None) -> None:
+def db_upsert_meta(meta: PluginMeta, state: str, error_msg: str | None = None,
+                   error_stack: str | None = None) -> None:
     """按元数据写入/更新插件行（保留用户已修改的 plugin_config）。"""
     with session_scope() as db:
         model = _model_of(meta.type)
@@ -34,6 +35,7 @@ def db_upsert_meta(meta: PluginMeta, state: str, error_msg: str | None = None) -
                 target_slot=meta.ui.get("target_slot"),
                 entry_path=meta.ui.get("entry"),
                 error_msg=error_msg,
+                error_stack=error_stack,
             )
         elif model is ToolConfig:
             fields = dict(
@@ -41,6 +43,7 @@ def db_upsert_meta(meta: PluginMeta, state: str, error_msg: str | None = None) -
                 owner_agent_id=meta.owner_agent_id, bind_ui_plugin_id=meta.bind_ui_plugin_id,
                 dependencies=json.dumps(meta.dependencies, ensure_ascii=False),
                 error_msg=error_msg,
+                error_stack=error_stack,
             )
         else:
             fields = dict(
@@ -50,6 +53,7 @@ def db_upsert_meta(meta: PluginMeta, state: str, error_msg: str | None = None) -
                 private_tool_ids=json.dumps(meta.private_tool_ids, ensure_ascii=False),
                 model_params=json.dumps(meta.model_params, ensure_ascii=False),
                 error_msg=error_msg,
+                error_stack=error_stack,
             )
         if row is None:
             row = model(id=meta.plugin_id, **fields)
@@ -60,7 +64,8 @@ def db_upsert_meta(meta: PluginMeta, state: str, error_msg: str | None = None) -
 
 
 def db_update_state(ptype: str, plugin_id: str, state: str,
-                    error_msg: str | None = None, keep_error: bool = False) -> None:
+                    error_msg: str | None = None, keep_error: bool = False,
+                    error_stack: str | None = None) -> None:
     """仅更新状态与错误信息。"""
     with session_scope() as db:
         row = db.get(_model_of(ptype), plugin_id)
@@ -71,6 +76,10 @@ def db_update_state(ptype: str, plugin_id: str, state: str,
             row.error_msg = error_msg
         elif not keep_error:
             row.error_msg = None
+        if error_stack is not None:
+            row.error_stack = error_stack
+        elif not keep_error:
+            row.error_stack = None
 
 
 def db_all_rows() -> list:

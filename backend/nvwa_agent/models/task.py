@@ -49,3 +49,19 @@ class SessionEventLog(Base):
     event_type: Mapped[str] = mapped_column(String, nullable=False)
     event_payload: Mapped[str] = mapped_column(Text, nullable=False)  # 完整payload JSON
     event_time: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class UiStateSnapshot(Base):
+    """组件状态快照表（v1.0 §11.1）：任务回放辅助数据，随任务级联删除。"""
+    __tablename__ = "ui_state_snapshot"
+    __table_args__ = (Index("idx_task_seq", "task_id", "event_seq"),)
+
+    snapshot_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    task_id: Mapped[str] = mapped_column(
+        String, ForeignKey("task_record.task_id", ondelete="CASCADE"), nullable=False,
+    )
+    event_seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    event_type: Mapped[str | None] = mapped_column(String, nullable=True)
+    plugin_id: Mapped[str] = mapped_column(String, nullable=False)
+    state_json: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

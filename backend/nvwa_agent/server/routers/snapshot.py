@@ -16,7 +16,7 @@ from nvwa_agent.database import get_db
 from nvwa_agent.models.misc import AgentProfile
 from nvwa_agent.server.errors import ApiError
 
-router = APIRouter()
+router = APIRouter(tags=["快照"])
 
 
 class SaveRequest(BaseModel):

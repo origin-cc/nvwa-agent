@@ -6,7 +6,7 @@ from fastapi.responses import StreamingResponse
 
 from nvwa_agent.core.plugin_runtime.event_bus import event_bus
 
-router = APIRouter()
+router = APIRouter(tags=["SSE"])
 
 
 @router.get("/api/v1/sse/subscribe")

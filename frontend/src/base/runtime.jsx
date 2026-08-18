@@ -9,7 +9,8 @@ import { PluginErrorBoundary } from './ErrorBoundary.jsx'
 import { dropModule, loadModule } from './loader.js'
 import { bumpStore, setMetas } from './pluginStore.js'
 import { sseClient } from './sseClient.js'
-import { clearState, restoreState, scopedStateHandle } from './stateApi.js'
+import { clearState, getState, restoreState, saveState, scopedStateHandle } from './stateApi.js'
+import { startStateCollector } from './stateCollector.js'
 
 // UI插件通过 window.React / window.antd 使用基座依赖（手写ES Module产物约定）
 function injectGlobals() {
@@ -46,7 +47,27 @@ function scopedHandle(meta) {
       },
     },
     reportError: (msg) => api.post(`/api/v1/plugins/${pluginId}/ui-error`, { error_msg: msg }).catch(() => {}),
+    replay: {
+      inject: (targetPluginId, state) => injectReplayState(targetPluginId, state),
+    },
   }
+}
+
+// 回放状态注入（§5.4）：持久化 + 通知目标组件重渲染
+function injectReplayState(pluginId, state) {
+  saveState(pluginId, state)
+  eventBus.emit('nvwa:replay-state', { plugin_id: pluginId, state })
+}
+
+// 收集当前激活组件插件的持久化状态（§5.3 收集范围）
+function getActiveStates() {
+  const states = []
+  metas.forEach((meta) => {
+    if (meta.type !== 'ui_component_plugin') return
+    if (!modules.has(meta.plugin_id)) return
+    states.push({ plugin_id: meta.plugin_id, state: getState(meta.plugin_id) })
+  })
+  return states
 }
 
 // ---------------- 生命周期（§4.3 前端状态机） ----------------
@@ -170,6 +191,7 @@ export async function bootRuntime() {
   bindSseHandlers()
   const data = await api.get('/api/v1/plugins/list')
   await applyPlugins(data.plugins || [])
+  startStateCollector(getActiveStates)
   sseClient.start()
 }
 

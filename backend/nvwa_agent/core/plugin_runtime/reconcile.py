@@ -39,20 +39,27 @@ def scan_and_reconcile(initial: bool = False) -> dict:
 
 
 def _handle_invalid_entry(runtime, entry, summary: dict) -> None:
-    """schema 无效 / 缺 plugin.json / ID 冲突条目。"""
+    """三层校验失败 / 缺 plugin.json / ID 冲突条目。"""
     msg = "; ".join(entry.errors)
+    stack = "\n".join(entry.errors)
+    code = entry.error_code
     pid = entry.plugin_id
     if pid is None:
         _log.warning("插件目录 %s 无效: %s", entry.dir_name, msg)
         return
     row = runtime_db.db_get_row(_row_type(pid), pid)
-    if entry.meta is not None and row is None:  # ID冲突且无DB记录：登记故障行
-        runtime.register_meta(entry.meta, "fault", msg)
-        runtime_db.db_upsert_meta(entry.meta, "fault", error_msg=msg)
+    if entry.meta is not None:
+        # 字段值/交叉引用校验失败或 ID 冲突：有完整 meta，落库 error_stack（§3.4）
+        runtime.register_meta(entry.meta, "fault", msg, error_stack=stack)
+        if row is None:
+            runtime_db.db_upsert_meta(entry.meta, "fault", error_msg=msg, error_stack=stack)
+        else:
+            runtime_db.db_update_state(entry.meta.type, pid, "fault",
+                                       error_msg=msg, error_stack=stack)
     elif runtime.has(pid):
-        runtime.mark_fault(pid, "PLUGIN_SCHEMA_INVALID", msg, persist=False)
+        runtime.mark_fault(pid, code, msg, persist=False, error_stack=stack)
     elif row is not None:
-        _register_stub(runtime, row, "fault", f"[PLUGIN_SCHEMA_INVALID] {msg}")
+        _register_stub(runtime, row, "fault", f"[{code}] {msg}", error_stack=stack)
     else:
         _log.warning("插件 %s 无效且无法定位记录: %s", pid, msg)
     summary["fault"].append(pid)
@@ -119,7 +126,8 @@ def _handle_disk_missing(runtime, summary: dict) -> None:
         summary["fault"].append(row.id)
 
 
-def _register_stub(runtime, row, state: str, error: str) -> None:
+def _register_stub(runtime, row, state: str, error: str,
+                   error_stack: str | None = None) -> None:
     """由数据库行构造内存元数据存根（磁盘文件不可用时）。"""
     meta = PluginMeta(
         plugin_id=row.id, name=row.name, version=row.version or "0.0.0", type=row.type,
@@ -128,7 +136,7 @@ def _register_stub(runtime, row, state: str, error: str) -> None:
     meta.owner_agent_id = getattr(row, "owner_agent_id", None)
     meta.bind_ui_plugin_id = getattr(row, "bind_ui_plugin_id", None)
     meta.bind_backend_plugin_id = getattr(row, "bind_backend_plugin_id", None)
-    runtime.register_meta(meta, state, error)
+    runtime.register_meta(meta, state, error, error_stack=error_stack)
 
 
 def _row_type(pid: str) -> str:

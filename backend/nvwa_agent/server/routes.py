@@ -2,6 +2,7 @@
 from fastapi import FastAPI
 
 from nvwa_agent.server.routers import (
+    audit,
     conversation,
     files,
     knowledge,
@@ -20,6 +21,7 @@ _ALL_ROUTERS = (
     task.router,
     files.router,
     knowledge.router,
+    audit.router,
     sse.router,
 )
 

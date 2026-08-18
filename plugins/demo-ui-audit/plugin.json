@@ -1,0 +1,15 @@
+{
+  "id": "demo-ui-audit",
+  "name": "审计面板",
+  "version": "1.0.0",
+  "type": "ui_page_plugin",
+  "description": "session_event_log 可视化审计面板：多维过滤 + 分页只读查询追加审计日志（v1.0 §7）",
+  "author": "nvwa-agent",
+  "dependencies": [],
+  "priority": 35,
+  "ui": {
+    "entry": "./index.js",
+    "route_path": "/audit",
+    "slots": []
+  }
+}

@@ -13,7 +13,12 @@ from nvwa_agent.config import get as get_config
 from nvwa_agent.core.log import get_core_logger
 from nvwa_agent.core.paths import resolve_path
 from nvwa_agent.core.plugin_runtime.meta import PluginMeta
-from nvwa_agent.core.plugin_runtime.schema_validator import load_and_validate
+from nvwa_agent.core.plugin_runtime.schema_validator import (
+    load_plugin_json,
+    validate_plugin_json,
+    validate_plugin_refs,
+    validate_plugin_values,
+)
 
 _log = get_core_logger()
 
@@ -24,11 +29,13 @@ class ScanEntry:
     errors: list[str] = field(default_factory=list)
     plugin_id: str | None = None
     meta: "PluginMeta | None" = None  # ID冲突时保留首个元数据用于故障登记
+    error_code: str = "PLUGIN_SCHEMA_INVALID"  # 校验失败错误码（§3.1 分层）
 
 
 def scan_disk() -> tuple[list[PluginMeta], list[ScanEntry]]:
     """扫描插件根目录，返回（校验通过的元数据列表, 问题条目列表）。"""
     root = resolve_path(get_config("plugins_dir", "./plugins"))
+    whitelist = get_config("file_access_whitelist_dirs", [])
     valid: list[PluginMeta] = []
     entries: list[ScanEntry] = []
 
@@ -43,10 +50,26 @@ def scan_disk() -> tuple[list[PluginMeta], list[ScanEntry]]:
             entries.append(ScanEntry(dir_name=sub.name,
                                      errors=[f"[{sub.name}] 缺少 plugin.json"]))
             continue
-        raw, errors = load_and_validate(pj)
-        if raw is None or errors:
-            pid = raw.get("id") if isinstance(raw, dict) else None
-            entries.append(ScanEntry(dir_name=sub.name, errors=errors, plugin_id=pid))
+        raw, load_errors = load_plugin_json(pj)
+        if raw is None:
+            entries.append(ScanEntry(dir_name=sub.name, errors=load_errors))
+            continue
+        # 第1层：结构校验 → PLUGIN_SCHEMA_INVALID
+        struct_errors = validate_plugin_json(raw)
+        if struct_errors:
+            entries.append(ScanEntry(dir_name=sub.name, errors=struct_errors,
+                                     plugin_id=raw.get("id")))
+            continue
+        # 第2层：字段值校验 + 第3层：交叉引用存在性 → PLUGIN_METADATA_INVALID
+        value_errors = validate_plugin_values(raw, sub.name)
+        ref_errors, _warnings = validate_plugin_refs(raw, sub, root)
+        fp_errors = _validate_file_permissions(raw, whitelist)
+        if value_errors or ref_errors or fp_errors:
+            entries.append(ScanEntry(
+                dir_name=sub.name, errors=value_errors + ref_errors + fp_errors,
+                plugin_id=raw.get("id"), meta=PluginMeta.from_raw(raw, sub),
+                error_code="PLUGIN_METADATA_INVALID",
+            ))
             continue
         valid.append(PluginMeta.from_raw(raw, sub))
 
@@ -69,3 +92,18 @@ def scan_disk() -> tuple[list[PluginMeta], list[ScanEntry]]:
                 kept.append(meta)
         valid = kept
     return valid, entries
+
+
+def _validate_file_permissions(raw: dict, whitelist: list) -> list[str]:
+    """§4.3 目录子集校验：file_permissions 声明的目录必须是全局白名单子集。"""
+    fp = raw.get("file_permissions") or {}
+    if not fp:
+        return []
+    errors: list[str] = []
+    whitelist_resolved = [resolve_path(p) for p in whitelist]
+    for key in ("read_dirs", "write_dirs"):
+        for d in fp.get(key) or []:
+            target = resolve_path(d)
+            if not any(target == w or w in target.parents for w in whitelist_resolved):
+                errors.append(f"file_permissions.{key}: 目录 {d} 不在全局白名单内")
+    return errors

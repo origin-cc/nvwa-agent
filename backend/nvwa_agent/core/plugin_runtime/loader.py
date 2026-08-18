@@ -6,6 +6,7 @@
 """
 import importlib.util
 import sys
+import traceback
 import uuid
 from pathlib import Path
 from typing import Any
@@ -20,11 +21,12 @@ _log = get_core_logger()
 
 
 class PluginLoadError(Exception):
-    """加载失败：携带错误码（PLUGIN_LOAD_FAILED / PLUGIN_HOOK_ERROR）。"""
+    """加载失败：携带错误码（PLUGIN_LOAD_FAILED / PLUGIN_HOOK_ERROR）与完整堆栈。"""
 
-    def __init__(self, code: str, message: str) -> None:
+    def __init__(self, code: str, message: str, error_stack: str | None = None) -> None:
         super().__init__(message)
         self.code = code
+        self.error_stack = error_stack
 
 
 def _parse_hook_path(hook_path: str, base_dir: Path) -> tuple[Path, str]:
@@ -61,7 +63,9 @@ def execute_on_load(meta: PluginMeta, ctx: PluginContext) -> BaseAgentPlugin | B
     except PluginLoadError:
         raise
     except Exception as exc:
-        raise PluginLoadError("PLUGIN_LOAD_FAILED", f"插件 {meta.plugin_id} 加载失败: {exc}") from exc
+        raise PluginLoadError("PLUGIN_LOAD_FAILED",
+                              f"插件 {meta.plugin_id} 加载失败: {exc}",
+                              error_stack=traceback.format_exc()) from exc
 
     expected = BaseAgentPlugin if meta.is_agent else BaseToolPlugin
     if not isinstance(instance, expected):
@@ -87,4 +91,6 @@ def execute_hook(meta: PluginMeta, hook_name: str, ctx: PluginContext | None) ->
             raise AttributeError(f"钩子函数 {func_name} 不存在")
         func(ctx)
     except Exception as exc:
-        raise PluginLoadError("PLUGIN_HOOK_ERROR", f"插件 {meta.plugin_id} {hook_name} 执行失败: {exc}") from exc
+        raise PluginLoadError("PLUGIN_HOOK_ERROR",
+                              f"插件 {meta.plugin_id} {hook_name} 执行失败: {exc}",
+                              error_stack=traceback.format_exc()) from exc

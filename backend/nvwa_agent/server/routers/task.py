@@ -8,16 +8,27 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 
 from nvwa_agent.database import get_db, session_scope
-from nvwa_agent.models.task import Conversation, SessionEventLog, TaskRecord
+from nvwa_agent.models.task import Conversation, SessionEventLog, TaskRecord, UiStateSnapshot
 from nvwa_agent.server.errors import ApiError
 
-router = APIRouter()
+router = APIRouter(tags=["任务"])
 
 
 class TaskSubmitBody(BaseModel):
     prompt: str
     file_ids: list[str] = []
     conversation_id: str | None = None
+
+
+class UiStateItem(BaseModel):
+    plugin_id: str
+    state: dict
+
+
+class UiStateSnapshotBody(BaseModel):
+    event_seq: int
+    event_type: str | None = None
+    states: list[UiStateItem]
 
 
 def _enqueue(task_id: str) -> None:
@@ -128,6 +139,45 @@ def _task_brief(row: TaskRecord) -> dict:
         "created_at": row.created_at.isoformat() if row.created_at else None,
         "finished_at": row.finished_at.isoformat() if row.finished_at else None,
     }
+
+
+@router.post("/api/v1/task/{task_id}/ui-state-snapshot")
+def post_ui_state_snapshot(task_id: str, body: UiStateSnapshotBody):
+    """上报任务执行期间的组件状态快照（v1.0 §12.1）。"""
+    with session_scope() as db:
+        if db.get(TaskRecord, task_id) is None:
+            raise ApiError("NOT_FOUND", f"任务 {task_id} 不存在")
+        for item in body.states:
+            db.add(UiStateSnapshot(
+                task_id=task_id,
+                event_seq=body.event_seq,
+                event_type=body.event_type,
+                plugin_id=item.plugin_id,
+                state_json=json.dumps(item.state, ensure_ascii=False),
+            ))
+    return {"accepted": True, "snapshot_count": len(body.states)}
+
+
+@router.get("/api/v1/task/{task_id}/ui-state-snapshots")
+def get_ui_state_snapshots(task_id: str, db=Depends(get_db)):
+    """获取任务组件状态快照序列（按 event_seq 升序，v1.0 §12.1）。"""
+    rows = (
+        db.query(UiStateSnapshot)
+        .filter(UiStateSnapshot.task_id == task_id)
+        .order_by(UiStateSnapshot.event_seq.asc(), UiStateSnapshot.snapshot_id.asc())
+        .all()
+    )
+    snapshots = [
+        {
+            "event_seq": r.event_seq,
+            "event_type": r.event_type,
+            "plugin_id": r.plugin_id,
+            "state": _loads(r.state_json, {}),
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+        }
+        for r in rows
+    ]
+    return {"snapshots": snapshots}
 
 
 def _loads(text: str | None, default):

@@ -10,7 +10,7 @@ from nvwa_agent.database import get_db, session_scope
 from nvwa_agent.models.task import Conversation, TaskRecord
 from nvwa_agent.server.errors import ApiError
 
-router = APIRouter()
+router = APIRouter(tags=["会话"])
 
 
 class ConversationCreateBody(BaseModel):

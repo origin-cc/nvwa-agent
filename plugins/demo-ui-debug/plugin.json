@@ -1,0 +1,15 @@
+{
+  "id": "demo-ui-debug",
+  "name": "插件调试面板",
+  "version": "1.0.0",
+  "type": "ui_page_plugin",
+  "description": "插件调试面板：展示插件运行状态、故障完整堆栈（error_stack）与按插件过滤的运行日志（v1.0 §6）",
+  "author": "nvwa-agent",
+  "dependencies": [],
+  "priority": 40,
+  "ui": {
+    "entry": "./index.js",
+    "route_path": "/debug",
+    "slots": []
+  }
+}

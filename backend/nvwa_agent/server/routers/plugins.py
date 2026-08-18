@@ -1,8 +1,9 @@
-"""插件管理 API（§9 插件管理）：list/scan/activate/deactivate/unload/config/state/static/ui-error。"""
+"""插件管理 API（§9 插件管理）：list/scan/activate/deactivate/unload/config/state/static/ui-error/logs。"""
 import json
+import re
 from pathlib import Path
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
@@ -15,7 +16,7 @@ from nvwa_agent.database import get_db, session_scope
 from nvwa_agent.models.misc import UiPluginState
 from nvwa_agent.server.errors import ApiError
 
-router = APIRouter()
+router = APIRouter(tags=["插件管理"])
 _frontend_log = get_frontend_logger()
 
 _MIME = {
@@ -126,3 +127,42 @@ def plugin_static(plugin_id: str, file_path: str):
     media_type = _MIME.get(target.suffix.lower(), "application/octet-stream")
     # 开发期插件文件可能随时修改：禁用启发式缓存，强制浏览器每次回源验证
     return FileResponse(target, media_type=media_type, headers={"Cache-Control": "no-cache"})
+
+
+_LOG_LINE_RE = re.compile(r"^(\S+ \S+) (\w+) \[(\S+)\] \[([^\]]+)\] (.*)$")
+
+
+@router.get("/api/v1/plugins/{plugin_id}/logs")
+def get_plugin_logs(
+    plugin_id: str,
+    level: str | None = Query(None),
+    keyword: str | None = Query(None),
+    limit: int = Query(200, ge=1, le=1000),
+):
+    """查询插件运行日志（只读 backend_plugin.log，按 plugin_id/级别/关键字过滤，§6.4）。"""
+    from nvwa_agent.core.log import LOG_DIR
+
+    log_file = LOG_DIR / "backend_plugin.log"
+    if not log_file.is_file():
+        return {"plugin_id": plugin_id, "logs": []}
+
+    marker = f"[{plugin_id}]"
+    matched: list[dict] = []
+    # 从文件尾部读取，避免一次性加载过大（§6.4）
+    with log_file.open("r", encoding="utf-8", errors="ignore") as f:
+        f.seek(0, 2)
+        size = f.tell()
+        f.seek(max(0, size - 10 * 1024 * 1024))
+        for line in f.read().splitlines():
+            if marker not in line:
+                continue
+            m = _LOG_LINE_RE.match(line)
+            if not m:
+                continue
+            time_s, lvl, _logger, _pid, msg = m.groups()
+            if level and lvl.upper() != level.upper():
+                continue
+            if keyword and keyword not in msg:
+                continue
+            matched.append({"time": time_s, "level": lvl, "message": msg})
+    return {"plugin_id": plugin_id, "logs": matched[-limit:]}

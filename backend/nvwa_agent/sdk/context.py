@@ -11,6 +11,10 @@ class ToolForbiddenError(Exception):
     """工具调用被拒绝：不存在 / 被禁用 / 越权（TOOL_FORBIDDEN / TOOL_NOT_FOUND）。"""
 
 
+class FilePermissionError(PermissionError):
+    """文件访问越权：超出插件 file_permissions 或全局白名单（FILE_PERMISSION_DENIED）。"""
+
+
 class BaseLlmClient(ABC):
     """LLM 推理客户端：采样参数由运行时按全局配置 + plugin.json model_params 合并注入。"""
 
@@ -36,7 +40,7 @@ class BaseEventEmitter(ABC):
 
 
 class BaseFileAccessor(ABC):
-    """白名单目录内文件读写（§14 路径校验）。"""
+    """白名单目录内文件读写（§14 路径校验 + v1.0 §4 精细化权限）。"""
 
     @abstractmethod
     def read_text(self, path: str, encoding: str = "utf-8") -> str: ...
@@ -46,6 +50,9 @@ class BaseFileAccessor(ABC):
 
     @abstractmethod
     def list_dir(self, path: str) -> list[str]: ...
+
+    @abstractmethod
+    def delete(self, path: str) -> None: ...
 
 
 class BaseKnowledgeAccessor(ABC):
