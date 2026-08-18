@@ -4,11 +4,11 @@ from nvwa_agent.sdk import BaseToolPlugin, PluginContext, ToolResult
 
 class DemoFileTool(BaseToolPlugin):
     tool_name = "demo-file-tool:read_text"
-    description = "读取白名单目录内的文本文件内容（如 uploads/xxx.txt），返回文件文本"
+    description = "读取白名单目录内的文本文件内容（如 data/uploads/xxx.txt），返回文件文本"
     parameters_schema = {
         "type": "object",
         "properties": {
-            "path": {"type": "string", "description": "文件相对路径（基于data目录，如 uploads/a.txt）"},
+            "path": {"type": "string", "description": "文件路径（相对仓库根，如 data/uploads/a.txt）"},
         },
         "required": ["path"],
     }

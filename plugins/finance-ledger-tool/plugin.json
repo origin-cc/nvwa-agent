@@ -1,0 +1,13 @@
+{
+  "id": "finance-ledger-tool",
+  "name": "记账账本工具",
+  "version": "1.0.0",
+  "type": "backend_tool",
+  "description": "结构化记账理财账本工具：记账(add)、查账(query)、消费统计(stats)，账本持久化于 data/generated_docs/finance_ledger.json",
+  "author": "nvwa-agent",
+  "dependencies": [],
+  "priority": 50,
+  "lifecycle": {
+    "on_load": "./main.py::on_load"
+  }
+}

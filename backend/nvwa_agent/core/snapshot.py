@@ -66,10 +66,14 @@ def load_snapshot(snapshot_id: int) -> dict:
 
 
 def apply_snapshot(snapshot: dict) -> dict:
-    """按快照全量覆盖当前插件状态（导入与加载共用，§11 场景3 + v1.0 §8）。"""
+    """按快照全量覆盖当前插件状态（导入与加载共用，§11 场景3）。
+
+    激活顺序固定为 工具 → UI → Agent：Agent 可声明 dependencies=[工具id]，
+    工具先就位才能通过依赖校验（否则 Agent 被误标 fault）。
+    """
     runtime = get_runtime()
     entries = {}
-    for kind in ("backend_agents", "backend_tools", "ui_plugins"):
+    for kind in ("backend_tools", "ui_plugins", "backend_agents"):
         for entry in (snapshot.get("plugins") or {}).get(kind, []):
             entries[entry["plugin_id"]] = entry
 
@@ -158,25 +162,38 @@ def import_snapshot(name: str, snapshot: dict) -> dict:
 
 # ---------------- 预置快照（首次启动） ----------------
 def ensure_preset_snapshots() -> None:
-    """预置两个示例快照（§7.4）：纯对话模式 / 知识库增强模式。"""
+    """预置三个示例快照（§7.4）：纯对话模式 / 知识库增强模式 / 个人全能助手。"""
     with session_scope() as db:
         if db.query(AgentProfile).count() > 0:
             return
+    personal_bundle = [
+        # 个人向 Agent ×6
+        "personal-life-agent", "personal-kb-review-agent", "personal-organize-agent",
+        "personal-writing-agent", "personal-code-agent", "personal-finance-agent",
+        # 工具 ×4
+        "file-write-tool", "finance-ledger-tool", "demo-file-tool", "kb-retrieval-tool",
+        # UI ×8
+        "demo-ui-chat", "demo-ui-think-visualizer", "demo-ui-plugins", "demo-ui-config",
+        "demo-ui-kb", "demo-ui-replay", "demo-ui-snapshot", "demo-ui-tools",
+    ]
     presets = [
         ("预置·纯对话模式", ["demo-agent-plugin", "demo-file-tool",
                              "demo-ui-chat", "demo-ui-think-visualizer"]),
         ("预置·知识库增强模式", None),  # None = 当前全部插件
+        ("预置·个人全能助手", personal_bundle),
     ]
     for name, only_ids in presets:
         snapshot = build_snapshot_json(name, is_preset=True)
         if only_ids is not None:
             for kind in snapshot["plugins"]:
-                snapshot["plugins"][kind] = [
-                    e for e in snapshot["plugins"][kind] if e["plugin_id"] in only_ids]
+                kept = [e for e in snapshot["plugins"][kind] if e["plugin_id"] in only_ids]
+                for e in kept:
+                    e["enabled"] = True  # 预置组合：清单内插件默认启用（构建时全部未激活，需显式置位）
+                snapshot["plugins"][kind] = kept
         with session_scope() as db:
             db.add(AgentProfile(name=name, is_preset=1,
                                 snapshot_json=json.dumps(snapshot, ensure_ascii=False)))
-    _log.info("预置示例快照已初始化（2 个）")
+    _log.info("预置示例快照已初始化（3 个）")
 
 
 def list_snapshots() -> list[dict]:

@@ -1,0 +1,13 @@
+{
+  "id": "file-write-tool",
+  "name": "文件写入工具",
+  "version": "1.0.0",
+  "type": "backend_tool",
+  "description": "白名单目录文本文件写入工具：将 Agent 生成的文档、笔记、整理结果等文本内容持久化保存到 data/generated_docs/ 等白名单目录内的文件",
+  "author": "nvwa-agent",
+  "dependencies": [],
+  "priority": 50,
+  "lifecycle": {
+    "on_load": "./main.py::on_load"
+  }
+}

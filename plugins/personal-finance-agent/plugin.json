@@ -1,0 +1,22 @@
+{
+  "id": "personal-finance-agent",
+  "name": "智能记账理财分析智能体",
+  "version": "1.0.0",
+  "type": "backend_agent",
+  "bind_ui_plugin_id": "demo-ui-think-visualizer",
+  "description": "记账理财助手：日常记账、账目查询、消费统计分析、预算与理财建议（记账/花了多少钱/查账/消费分析/预算/理财时选用）",
+  "author": "nvwa-agent",
+  "dependencies": ["finance-ledger-tool"],
+  "priority": 50,
+  "private_tool_ids": [],
+  "model_params": {
+    "temperature": 0.3,
+    "max_tokens": 2048
+  },
+  "lifecycle": {
+    "on_load": "./main.py::on_load",
+    "on_activate": "./main.py::on_activate",
+    "on_deactivate": "./main.py::on_deactivate",
+    "on_unload": "./main.py::on_unload"
+  }
+}

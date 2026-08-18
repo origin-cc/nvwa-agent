@@ -1,0 +1,22 @@
+{
+  "id": "personal-code-agent",
+  "name": "代码辅助智能体",
+  "version": "1.0.0",
+  "type": "backend_agent",
+  "bind_ui_plugin_id": "demo-ui-think-visualizer",
+  "description": "代码辅助助手：代码生成、代码解释、Bug调试、技术问答（写代码/解释代码/修Bug/技术问题时选用）",
+  "author": "nvwa-agent",
+  "dependencies": [],
+  "priority": 50,
+  "private_tool_ids": [],
+  "model_params": {
+    "temperature": 0.3,
+    "max_tokens": 4096
+  },
+  "lifecycle": {
+    "on_load": "./main.py::on_load",
+    "on_activate": "./main.py::on_activate",
+    "on_deactivate": "./main.py::on_deactivate",
+    "on_unload": "./main.py::on_unload"
+  }
+}
