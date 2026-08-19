@@ -17,6 +17,7 @@ data/
 plugins/*/dist/*.map
 
 # IDE / 系统
+.trae/
 .idea/
 .vscode/
 .DS_Store
