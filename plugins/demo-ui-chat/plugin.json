@@ -1,7 +1,7 @@
 {
   "id": "demo-ui-chat",
   "name": "示例对话页",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "ui_page_plugin",
   "description": "通用对话页面插件：会话管理、任务提交、流式思考与最终答案渲染、任务历史回放",
   "author": "nvwa-agent",
@@ -10,6 +10,21 @@
   "ui": {
     "entry": "./index.js",
     "route_path": "/chat",
-    "slots": ["chat:side-panel"]
+    "slots": ["chat:side-panel"],
+    "sider_conversation_list": true,
+    "sider_subnav": [
+      { "key": "create", "label": "新建会话" },
+      {
+        "key": "organize",
+        "label": "会话整理",
+        "children": [
+          { "key": "sort:updated", "label": "最近更新" },
+          { "key": "sort:tasks", "label": "任务数" },
+          { "key": "filter:all", "label": "全部会话" },
+          { "key": "filter:active", "label": "有任务" },
+          { "key": "filter:empty", "label": "空会话" }
+        ]
+      }
+    ]
   }
 }

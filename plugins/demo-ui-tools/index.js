@@ -44,7 +44,7 @@ function PageComponent({ nvwa }) {
       title: `${tool.tool_name || tool.plugin_id} 参数 Schema`,
       width: 640,
       content: h('pre', {
-        style: { maxHeight: 360, overflow: 'auto', fontSize: 12, background: '#fafafa', padding: 12, borderRadius: 8 },
+        style: { maxHeight: 360, overflow: 'auto', fontSize: 12, background: 'var(--nvwa-bg-hover)', padding: 12, borderRadius: 8 },
       }, JSON.stringify(tool.parameters_schema || {}, null, 2)),
     })
   }

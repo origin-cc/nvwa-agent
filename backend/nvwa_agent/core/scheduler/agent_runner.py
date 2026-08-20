@@ -10,19 +10,24 @@ from nvwa_agent.core.plugin_runtime.event_bus import event_bus
 
 
 def run_agent_graph(meta, instance, graph, prompt: str, task_id: str,
-                    file_ids: list[str] | None = None) -> str:
-    """调用选中Agent的 StateGraph 并返回最终完整答案。"""
+                    file_ids: list[str] | None = None,
+                    history: list[dict] | None = None) -> str:
+    """调用选中Agent的 StateGraph 并返回最终完整答案。
+
+    history 为会话上下文（摘要 + 最近轮次），注入到 system 与当前 user 之间。
+    """
     _, max_calls = get_task_limits()
     user_content = prompt
     if file_ids:
         user_content += f"\n（用户提供了附件文件id: {file_ids}，可通过工具访问 data/uploads 目录）"
 
-    state = {
-        "messages": [
-            {"role": "system", "content": getattr(instance, "system_prompt", "") or ""},
-            {"role": "user", "content": user_content},
-        ]
-    }
+    messages = [
+        {"role": "system", "content": getattr(instance, "system_prompt", "") or ""},
+    ]
+    messages.extend(history or [])
+    messages.append({"role": "user", "content": user_content})
+
+    state = {"messages": messages}
     event_bus.publish("task:update", {
         "task_id": task_id, "status": "running",
         "step_desc": f"Agent「{meta.name}」执行中",

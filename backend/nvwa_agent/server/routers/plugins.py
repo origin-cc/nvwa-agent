@@ -52,9 +52,11 @@ def scan_plugins():
 
 
 @router.post("/api/v1/plugins/{plugin_id}/activate")
-def activate_plugin(plugin_id: str):
-    get_runtime().activate(plugin_id)
-    return {"plugin_id": plugin_id, "state": get_runtime().get_state(plugin_id)}
+def activate_plugin(plugin_id: str, cascade: bool = False):
+    """激活插件；cascade=true 时连带激活未激活的依赖插件（前端确认后调用）。"""
+    runtime = get_runtime()
+    runtime.activate(plugin_id, cascade=cascade)
+    return {"plugin_id": plugin_id, "state": runtime.get_state(plugin_id)}
 
 
 @router.post("/api/v1/plugins/{plugin_id}/deactivate")

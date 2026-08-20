@@ -65,3 +65,15 @@ class UiStateSnapshot(Base):
     plugin_id: Mapped[str] = mapped_column(String, nullable=False)
     state_json: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class ConversationSummary(Base):
+    """会话滚动摘要表（上下文压缩）：折叠进摘要的旧轮次持久化，随会话级联删除。"""
+    __tablename__ = "conversation_summary"
+
+    conversation_id: Mapped[str] = mapped_column(
+        String, ForeignKey("conversation.conversation_id", ondelete="CASCADE"), primary_key=True,
+    )
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    covered_turns: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)

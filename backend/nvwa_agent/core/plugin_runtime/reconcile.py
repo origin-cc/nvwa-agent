@@ -33,9 +33,29 @@ def scan_and_reconcile(initial: bool = False) -> dict:
     runtime.validate_bindings()
 
     if initial:
+        _ensure_orchestrator(runtime)
         _fail_interrupted_tasks()
     _log.info("插件扫描完成: %s", summary)
     return summary
+
+
+def _ensure_orchestrator(runtime) -> None:
+    """核心编排智能体是唯一任务入口：启动恢复时若存在且非 fault，确保其激活。
+
+    - 老库升级（预置快照 count>0 早退、新插件默认 loaded 不激活）时，重启后自动补激活；
+    - 仅在 initial=True（系统启动）调用，手动扫描不强制，尊重「可插拔」语义。
+    """
+    from nvwa_agent.core.plugin_runtime.runtime import ORCHESTRATOR_ID
+
+    meta = runtime.get_meta(ORCHESTRATOR_ID)
+    if meta is None or runtime.get_state(ORCHESTRATOR_ID) == "fault":
+        return
+    if runtime.get_state(ORCHESTRATOR_ID) != "activated":
+        try:
+            runtime.activate(ORCHESTRATOR_ID)
+            _log.info("核心编排智能体（orchestrator-agent）已自动激活")
+        except PluginOpError as exc:
+            _log.warning("核心编排智能体自动激活失败: %s", exc)
 
 
 def _handle_invalid_entry(runtime, entry, summary: dict) -> None:

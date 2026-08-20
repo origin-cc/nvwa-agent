@@ -2,7 +2,7 @@
 import json
 
 from nvwa_agent.core import taskctx
-from nvwa_agent.core.llm import get_llm_client, merge_model_params
+from nvwa_agent.core.llm import TaskCancelledError, get_llm_client, merge_model_params
 from nvwa_agent.core.log import get_plugin_logger
 from nvwa_agent.core.paths import resolve_path
 from nvwa_agent.core.plugin_runtime.event_bus import event_bus
@@ -40,6 +40,10 @@ class LlmServiceImpl(BaseLlmClient):
         def _stream():
             seq = 0
             for shard in client.chat(messages, stream=True):
+                from nvwa_agent.core.scheduler.queue import is_cancelled  # 延迟导入避免循环依赖
+
+                if is_cancelled(taskctx.get_current_task()):
+                    raise TaskCancelledError
                 seq += 1
                 event_bus.publish("agent:think", {
                     "task_id": taskctx.get_current_task(),

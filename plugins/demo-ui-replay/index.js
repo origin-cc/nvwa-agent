@@ -194,7 +194,7 @@ function PageComponent({ nvwa }) {
           onChange: (p) => refresh(p),
         }))),
     // 右：时间线 + 组件状态回放
-    h('div', { style: { flex: 1, minWidth: 0, borderLeft: '1px solid #f0f0f0', paddingLeft: 16, overflowY: 'auto' } },
+    h('div', { style: { flex: 1, minWidth: 0, borderLeft: '1px solid var(--nvwa-border)', paddingLeft: 16, overflowY: 'auto' } },
       !selected
         ? h(Empty, { style: { marginTop: 120 }, description: '左侧选择一个任务查看事件时间线' })
         : h(Spin, { spinning: logLoading },

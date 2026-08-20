@@ -39,3 +39,23 @@ def test_plugin_lifecycle_scan_activate_deactivate_unload(client):
     client.post("/api/v1/plugins/demo-agent-plugin/activate")
     states = _states(client)
     assert states["demo-agent-plugin"] == "activated"
+
+
+def test_activate_dependency_cascade_and_friendly_error(client):
+    """依赖未激活：非连带返回友好错误（不标 fault）；cascade=true 连带激活依赖。"""
+    client.post("/api/v1/plugins/scan")
+
+    # 非连带激活：依赖未激活 → 409 友好错误，插件不进入 fault
+    resp = client.post("/api/v1/plugins/personal-finance-agent/activate")
+    assert resp.status_code == 409
+    assert resp.json()["code"] == "PLUGIN_DEPENDENCY_NOT_ACTIVATED"
+    states = _states(client)
+    assert states["finance-ledger-tool"] == "loaded"
+    assert states["personal-finance-agent"] != "fault"
+
+    # 连带激活：cascade=true → 先激活依赖工具，再激活 Agent
+    resp = client.post("/api/v1/plugins/personal-finance-agent/activate?cascade=true")
+    assert resp.status_code == 200
+    states = _states(client)
+    assert states["finance-ledger-tool"] == "activated"
+    assert states["personal-finance-agent"] == "activated"

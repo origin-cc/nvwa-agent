@@ -80,7 +80,7 @@ function PageComponent({ nvwa }) {
   ]
 
   const expandedRowRender = (r) => h('pre', {
-    style: { background: '#fafafa', padding: 8, borderRadius: 4, whiteSpace: 'pre-wrap', fontSize: 12, margin: 0 },
+    style: { background: 'var(--nvwa-bg-hover)', padding: 8, borderRadius: 4, whiteSpace: 'pre-wrap', fontSize: 12, margin: 0 },
   }, JSON.stringify(r.event_payload || {}, null, 2))
 
   return h('div', { style: { padding: 16 } },

@@ -9,15 +9,16 @@ import queue as _queue
 import threading
 from datetime import datetime
 
-from nvwa_agent.config import get_task_limits
+from nvwa_agent.config import get, get_task_limits
 from nvwa_agent.core import taskctx
 from nvwa_agent.core.log import get_core_logger
+from nvwa_agent.core.llm import TaskCancelledError
 from nvwa_agent.core.plugin_runtime.event_bus import event_bus
 from nvwa_agent.core.plugin_runtime.runtime import (
     ToolCallLimitExceeded,
     get_runtime,
 )
-from nvwa_agent.core.scheduler import intent as intent_mod
+from nvwa_agent.core.scheduler import context as context_mod
 from nvwa_agent.core.scheduler.agent_runner import run_agent_graph
 from nvwa_agent.database import session_scope
 from nvwa_agent.models.task import Conversation, TaskRecord
@@ -26,6 +27,28 @@ _log = get_core_logger()
 
 _task_queue: "_queue.Queue[str]" = _queue.Queue()
 _started = False
+
+_cancel_events: dict[str, threading.Event] = {}
+_cancel_lock = threading.Lock()
+
+
+def cancel_task(task_id: str) -> None:
+    """标记任务取消：创建并 set 取消事件（流式推理中断信号）。"""
+    with _cancel_lock:
+        _cancel_events.setdefault(task_id, threading.Event()).set()
+
+
+def is_cancelled(task_id: str | None) -> bool:
+    if not task_id:
+        return False
+    with _cancel_lock:
+        evt = _cancel_events.get(task_id)
+    return bool(evt and evt.is_set())
+
+
+def _clear_cancel(task_id: str) -> None:
+    with _cancel_lock:
+        _cancel_events.pop(task_id, None)
 
 
 def enqueue(task_id: str) -> None:
@@ -53,13 +76,25 @@ def _worker_loop() -> None:
 
 
 def _run_task(task_id: str) -> None:
+    try:
+        _run_task_body(task_id)
+    finally:
+        _clear_cancel(task_id)
+
+
+def _run_task_body(task_id: str) -> None:
     runtime = get_runtime()
     task = _load_task(task_id)
     if task is None or task.status != "pending":
         return
+    if is_cancelled(task_id):
+        _set_task(task_id, status="cancelled")
+        event_bus.publish("task:cancelled", {"task_id": task_id}, task_id=task_id)
+        return
 
     prompt = task.input_prompt or ""
     file_ids = json.loads(task.file_ids) if task.file_ids else []
+    conversation_id = task.conversation_id
     max_duration, _ = get_task_limits()
     taskctx.set_current_task(task_id)
     runtime.reset_tool_counter(task_id)
@@ -77,23 +112,30 @@ def _run_task(task_id: str) -> None:
         taskctx.set_current_task(task_id)
         try:
             event_bus.publish("task:update", {
-                "task_id": task_id, "status": "running", "step_desc": "意图识别中",
+                "task_id": task_id, "status": "running", "step_desc": "核心编排智能体执行中",
             }, task_id=task_id)
             agents = runtime.activated_agents()
             if not agents:
                 error_code, error_msg = "NO_AGENT_MATCHED", "当前无已启用的Agent插件"
                 return
-            result = intent_mod.recognize(prompt, agents)
-            picked = intent_mod.pick_agent(result)
-            if picked is None:
-                error_code, error_msg = "NO_AGENT_MATCHED", "未匹配到任何可用Agent"
+            window_chars = int(get("conversation_context_window_chars", 20000))
+            retain_ratio = float(get("conversation_retain_ratio", 0.2))
+            history = context_mod.build_conversation_context(conversation_id, task_id,
+                                                             window_chars, retain_ratio)
+            # 唯一任务入口：核心编排智能体（orchestrator），由其 ReAct loop 委派子智能体
+            orchestrator = runtime.get_orchestrator()
+            if orchestrator is None:
+                error_code, error_msg = "NO_AGENT_MATCHED", "核心编排智能体（orchestrator-agent）未激活"
                 return
-            meta, instance, graph = picked
+            meta, instance, graph = orchestrator
             with session_scope() as db:
                 row = db.get(TaskRecord, task_id)
                 if row is not None:
                     row.active_agent_ids = json.dumps([meta.plugin_id])
-            answer = run_agent_graph(meta, instance, graph, prompt, task_id, file_ids)
+            answer = run_agent_graph(meta, instance, graph, prompt, task_id, file_ids,
+                                     history=history)
+        except TaskCancelledError:
+            error_code, error_msg = "TASK_CANCELLED", "用户已中断"
         except ToolCallLimitExceeded as exc:
             error_code, error_msg = "TASK_TOOL_CALL_LIMIT", str(exc)
         except Exception as exc:  # LLM推理失败等（§11 场景4）
@@ -108,7 +150,10 @@ def _run_task(task_id: str) -> None:
     if timed_out:
         error_code, error_msg = "TASK_TIMEOUT", f"任务超过最大执行时长 {max_duration}s，已终止"
 
-    if error_code is not None:
+    if error_code == "TASK_CANCELLED":
+        event_bus.publish("task:cancelled", {"task_id": task_id}, task_id=task_id)
+        _set_task(task_id, status="cancelled")
+    elif error_code is not None:
         event_bus.publish("task:error", {
             "task_id": task_id, "error_msg": error_msg, "error_code": error_code,
         }, task_id=task_id)
@@ -137,7 +182,7 @@ def _set_task(task_id: str, **fields) -> None:
             return
         for key, value in fields.items():
             setattr(row, key, value)
-        if fields.get("status") in ("finish", "failed"):
+        if fields.get("status") in ("finish", "failed", "cancelled"):
             row.finished_at = datetime.now()
         conv = db.get(Conversation, row.conversation_id)
         if conv is not None:

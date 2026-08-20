@@ -19,6 +19,9 @@ _log = get_core_logger()
 
 VALID_STATES = {"loaded", "activated", "deactivated", "unloaded", "fault"}
 
+# 核心智能体（orchestrator）插件 id：作为唯一任务入口，其它 activated Agent 作为其子智能体
+ORCHESTRATOR_ID = "orchestrator-agent"
+
 
 class PluginOpError(Exception):
     """REST 层可感知的插件操作错误（409）。"""
@@ -73,6 +76,16 @@ class PluginRuntime:
             for i, m in self._metas.items()
             if m.is_agent and self._states.get(i) == "activated"
         ]
+
+    def get_orchestrator(self):
+        """返回 orchestrator 的 (meta, instance, graph)，未激活或未加载返回 None。"""
+        if ORCHESTRATOR_ID in self._metas and self._states.get(ORCHESTRATOR_ID) == "activated":
+            return (
+                self._metas[ORCHESTRATOR_ID],
+                self._instances.get(ORCHESTRATOR_ID),
+                self._graphs.get(ORCHESTRATOR_ID),
+            )
+        return None
 
     def register_meta(self, meta: PluginMeta, state: str, error: str | None = None,
                       error_stack: str | None = None) -> None:
@@ -136,10 +149,24 @@ class PluginRuntime:
             })
         return True
 
-    def activate(self, plugin_id: str) -> None:
+    def activate(self, plugin_id: str, *, cascade: bool = False,
+                 _stack: set | None = None) -> None:
+        """激活插件。
+
+        - 依赖未激活时：cascade=True 递归连带激活依赖后激活自身；
+          cascade=False 返回友好错误（PLUGIN_DEPENDENCY_NOT_ACTIVATED），
+          不再标记 fault（由前端先确认再携带 cascade=true 调用）。
+        - _stack 用于检测依赖循环，防止递归无限嵌套。
+        """
         meta = self._metas.get(plugin_id)
         if meta is None:
             raise PluginOpError("NOT_FOUND", f"插件 {plugin_id} 不存在")
+        if _stack is None:
+            _stack = set()
+        if plugin_id in _stack:
+            raise PluginOpError("PLUGIN_DEPENDENCY_CYCLE",
+                                f"检测到依赖循环: {plugin_id}")
+        _stack.add(plugin_id)
         state = self._states.get(plugin_id)
         if state == "fault":
             raise PluginOpError("PLUGIN_STATE_INVALID",
@@ -152,14 +179,20 @@ class PluginRuntime:
                 state = "loaded"
             else:
                 raise PluginOpError("PLUGIN_STATE_INVALID", f"插件 {plugin_id} 当前状态 {state} 不可激活")
-        # 依赖必须已激活（PRD 3.1.2）
+        # 依赖必须已激活（PRD 3.1.2）：未激活 → 连带激活或友好提示，不标记 fault
         for dep in meta.dependencies:
-            dep_state = self._states.get(dep)
-            if dep_state != "activated":
-                self.mark_fault(plugin_id, "PLUGIN_DEPENDENCY_MISSING",
-                                f"依赖插件 {dep} 未激活（状态 {dep_state}）")
-                raise PluginOpError("PLUGIN_STATE_INVALID",
-                                    f"依赖插件 {dep} 未激活，{plugin_id} 已标记故障")
+            if dep == plugin_id:
+                raise PluginOpError("PLUGIN_DEPENDENCY_CYCLE", f"插件 {plugin_id} 依赖自身")
+            if self._states.get(dep) == "activated":
+                continue
+            if dep not in self._metas:
+                raise PluginOpError("PLUGIN_DEPENDENCY_MISSING", f"依赖插件 {dep} 缺失")
+            if cascade:
+                self.activate(dep, cascade=True, _stack=_stack)
+                continue
+            raise PluginOpError(
+                "PLUGIN_DEPENDENCY_NOT_ACTIVATED",
+                f"依赖插件 {dep} 未激活（状态 {self._states.get(dep)}），请确认后连带激活")
         if meta.is_backend:
             try:
                 execute_hook(meta, "on_activate", self._ctxs.get(plugin_id))
@@ -251,8 +284,18 @@ class PluginRuntime:
                 return m
         return None
 
+    def _resolve_agent(self, agent_id: str) -> PluginMeta | None:
+        """把 activated 的 backend_agent（除 orchestrator 自身）解析为可委派的子 Agent。"""
+        meta = self._metas.get(agent_id)
+        if meta is not None and meta.is_agent and agent_id != ORCHESTRATOR_ID:
+            return meta
+        return None
+
     def call_tool(self, tool_id: str, args: dict, caller_agent_id: str) -> dict:
-        """统一工具调用入口：状态/权限校验 + tool:call/result/error 事件（§10）。"""
+        """统一工具调用入口：状态/权限校验 + tool:call/result/error 事件（§10）。
+
+        tool_id 命中 backend_tool 走工具执行；命中 activated backend_agent 走子 Agent 委派。
+        """
         _, max_calls = get_task_limits()
         tid = taskctx.get_current_task()
         count = self._tool_calls_by_task.get(tid, 0) + 1
@@ -262,6 +305,9 @@ class PluginRuntime:
 
         meta = self._resolve_tool(tool_id)
         if meta is None:
+            agent_meta = self._resolve_agent(tool_id)
+            if agent_meta is not None:
+                return self._call_agent(agent_meta, args, caller_agent_id)
             raise _forbidden("TOOL_NOT_FOUND", f"工具 {tool_id} 不存在")
         if self._states.get(meta.plugin_id) != "activated":
             raise _forbidden("TOOL_FORBIDDEN", f"工具 {meta.plugin_id} 未激活或已禁用")
@@ -307,11 +353,56 @@ class PluginRuntime:
         return {"ok": False, "error_code": result.error_code or "TOOL_EXEC_ERROR",
                 "error_msg": result.error_msg}
 
+    def _call_agent(self, meta: PluginMeta, args: dict, caller_agent_id: str) -> dict:
+        """把 activated 子 Agent 作为工具调用（agent-as-tool），返回其最终答案。"""
+        agent_id = meta.plugin_id
+        tid = taskctx.get_current_task()
+        if self._states.get(agent_id) != "activated":
+            return {"ok": False, "error_code": "TOOL_FORBIDDEN",
+                    "error_msg": f"子Agent {agent_id} 未激活或已禁用"}
+        instance = self._instances.get(agent_id)
+        graph = self._graphs.get(agent_id)
+        if instance is None or graph is None:
+            return {"ok": False, "error_code": "TOOL_FORBIDDEN",
+                    "error_msg": f"子Agent {agent_id} 未加载"}
+        prompt = (args or {}).get("prompt", "")
+        if not prompt:
+            return {"ok": False, "error_code": "TOOL_EXEC_ERROR", "error_msg": "缺少 prompt 参数"}
+
+        event_bus.publish("tool:call", {
+            "task_id": tid, "tool_id": agent_id, "call_args": {"prompt": prompt},
+        })
+        started = time.time()
+        try:
+            from nvwa_agent.core.scheduler.agent_runner import run_agent_graph
+
+            # 子 Agent 可能运行在编排器派生的线程中，需显式绑定当前任务上下文，
+            # 否则其 agent:think / tool:* 事件会落回默认 task_id。
+            taskctx.set_current_task(tid)
+            answer = run_agent_graph(meta, instance, graph, prompt, tid, None, None)
+        except Exception as exc:
+            _log.exception("子Agent %s 执行异常", agent_id)
+            event_bus.publish("tool:error", {
+                "task_id": tid, "tool_id": agent_id,
+                "error_msg": f"子Agent执行失败: {exc}", "error_code": "TOOL_EXEC_ERROR",
+            })
+            return {"ok": False, "error_code": "TOOL_EXEC_ERROR", "error_msg": str(exc)}
+
+        elapsed = round(time.time() - started, 3)
+        event_bus.publish("tool:result", {
+            "task_id": tid, "tool_id": agent_id,
+            "result": answer, "elapsed_sec": elapsed,
+        })
+        return {"ok": True, "data": answer}
+
     def reset_tool_counter(self, task_id: str) -> None:
         self._tool_calls_by_task.pop(task_id, None)
 
     def tool_specs_for(self, caller_agent_id: str) -> list[dict]:
-        """当前可调用工具清单（全局 + 自身私有），供 Agent function calling。"""
+        """当前可调用工具清单（全局 + 自身私有），供 Agent function calling。
+
+        当 caller 为 orchestrator 时，额外把其它 activated Agent 作为子智能体工具暴露。
+        """
         specs = []
         for pid, meta in self._metas.items():
             if not meta.is_tool or self._states.get(pid) != "activated":
@@ -325,6 +416,26 @@ class PluginRuntime:
                 "description": getattr(instance, "description", ""),
                 "parameters_schema": getattr(instance, "parameters_schema", {}) or {},
             })
+        # agent-as-tool：orchestrator 可委派其它 activated Agent
+        if caller_agent_id == ORCHESTRATOR_ID:
+            for pid, meta in self._metas.items():
+                if not meta.is_agent or self._states.get(pid) != "activated":
+                    continue
+                if pid == ORCHESTRATOR_ID:
+                    continue
+                specs.append({
+                    "tool_id": pid,
+                    "tool_name": pid,
+                    "description": meta.description,
+                    "parameters_schema": {
+                        "type": "object",
+                        "properties": {
+                            "prompt": {"type": "string",
+                                       "description": "委派给该子智能体的任务描述"},
+                        },
+                        "required": ["prompt"],
+                    },
+                })
         return specs
 
 
@@ -400,7 +511,12 @@ class PluginRuntime:
                     slots = _json.loads(row.slots or "[]")
                 except (TypeError, ValueError):
                     slots = []
+                ui_meta = meta.ui if meta is not None else {}
                 item["ui"] = {
+                    **{
+                        key: value for key, value in ui_meta.items()
+                        if key not in ("route_path", "slots", "target_slot", "entry")
+                    },
                     "route_path": row.route_path,
                     "slots": slots,
                     "target_slot": row.target_slot,

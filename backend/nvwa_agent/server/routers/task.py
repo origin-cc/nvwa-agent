@@ -99,6 +99,18 @@ def get_task(task_id: str, db=Depends(get_db)):
     return detail
 
 
+@router.post("/api/v1/task/{task_id}/cancel")
+def cancel_task(task_id: str):
+    """取消任务（前端停止按钮，§10）：标记取消信号，Worker 检测后中断流式推理。"""
+    with session_scope() as db:
+        if db.get(TaskRecord, task_id) is None:
+            raise ApiError("NOT_FOUND", f"任务 {task_id} 不存在")
+    from nvwa_agent.core.scheduler.queue import cancel_task as _cancel_task
+
+    _cancel_task(task_id)
+    return {"task_id": task_id, "status": "cancelling"}
+
+
 @router.get("/api/v1/task/{task_id}/log")
 def get_task_log(task_id: str, db=Depends(get_db)):
     """该任务全部 session_event_log 事件（按时间线），供任务回放。

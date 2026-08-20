@@ -11,12 +11,14 @@ import { bumpStore, setMetas } from './pluginStore.js'
 import { sseClient } from './sseClient.js'
 import { clearState, getState, restoreState, saveState, scopedStateHandle } from './stateApi.js'
 import { startStateCollector } from './stateCollector.js'
+import Markdown from './Markdown.jsx'
 
 // UI插件通过 window.React / window.antd 使用基座依赖（手写ES Module产物约定）
 function injectGlobals() {
   window.React = React
   window.ReactDOM = ReactDOM
   window.antd = antd
+  window.NvwaMarkdown = Markdown
 }
 
 const metas = new Map()        // pluginId -> meta（后端元数据）

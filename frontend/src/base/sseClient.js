@@ -55,7 +55,7 @@ function connect() {
   const types = [
     'plugin:loaded', 'plugin:activated', 'plugin:deactivated', 'plugin:unloaded',
     'plugin:error', 'task:start', 'task:update', 'task:finish', 'task:error',
-    'agent:think', 'tool:call', 'tool:result', 'tool:error',
+    'task:cancelled', 'agent:think', 'tool:call', 'tool:result', 'tool:error',
   ]
   types.forEach((t) => es.addEventListener(t, forward))
 

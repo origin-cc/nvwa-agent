@@ -15,6 +15,10 @@ class LlmProviderError(Exception):
     """推理后端不可用 / 调用失败（LLM_INFER_FAILED）。"""
 
 
+class TaskCancelledError(Exception):
+    """任务被用户取消（流式推理中断）。"""
+
+
 def get_llm_client(params: dict | None = None):
     """按当前配置返回推理客户端。
 

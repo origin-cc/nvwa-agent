@@ -167,6 +167,8 @@ def ensure_preset_snapshots() -> None:
         if db.query(AgentProfile).count() > 0:
             return
     personal_bundle = [
+        # 核心编排智能体（唯一任务入口）
+        "orchestrator-agent",
         # 个人向 Agent ×6
         "personal-life-agent", "personal-kb-review-agent", "personal-organize-agent",
         "personal-writing-agent", "personal-code-agent", "personal-finance-agent",
@@ -177,7 +179,7 @@ def ensure_preset_snapshots() -> None:
         "demo-ui-kb", "demo-ui-replay", "demo-ui-snapshot", "demo-ui-tools",
     ]
     presets = [
-        ("预置·纯对话模式", ["demo-agent-plugin", "demo-file-tool",
+        ("预置·纯对话模式", ["orchestrator-agent", "demo-agent-plugin", "demo-file-tool",
                              "demo-ui-chat", "demo-ui-think-visualizer"]),
         ("预置·知识库增强模式", None),  # None = 当前全部插件
         ("预置·个人全能助手", personal_bundle),

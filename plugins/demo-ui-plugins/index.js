@@ -4,7 +4,7 @@
 
 const { useState, useEffect, useCallback } = window.React
 const h = window.React.createElement
-const { Table, Button, Tag, Space, Select, message, Tooltip, Popconfirm, Typography } = window.antd
+const { Table, Button, Tag, Space, Select, message, Tooltip, Popconfirm, Modal, Typography } = window.antd
 
 const TYPE_LABEL = {
   backend_agent: 'Agent',
@@ -87,6 +87,29 @@ function PageComponent({ nvwa }) {
     }
   }
 
+  // 激活：预检依赖，未激活时先确认再连带激活（cascade=true），避免直接报错
+  const activateWithDeps = (p) => {
+    const missing = (p.dependencies || [])
+      .map((d) => {
+        const dep = plugins.find((q) => q.plugin_id === d)
+        return { id: d, state: dep ? dep.state : '缺失' }
+      })
+      .filter((d) => d.state !== 'activated')
+    if (missing.length === 0) {
+      op(`${p.plugin_id}/activate`, '已激活')
+      return
+    }
+    Modal.confirm({
+      title: '连带激活依赖插件',
+      content: `插件 ${p.plugin_id} 依赖以下插件未激活：${missing
+        .map((d) => `${d.id}（${d.state}）`).join('、')}。是否连带激活？`,
+      okText: '连带激活',
+      cancelText: '取消',
+      onOk: () => op(`${p.plugin_id}/activate?cascade=true`,
+        `已激活（连带 ${missing.map((d) => d.id).join('、')}）`),
+    })
+  }
+
   const scan = async () => {
     setScanning(true)
     try {
@@ -122,7 +145,7 @@ function PageComponent({ nvwa }) {
         const st = p.state
         return h(Space, { size: 4 },
           st !== 'activated' && st !== 'fault'
-            ? h(Button, { size: 'small', type: 'primary', onClick: () => op(`${p.plugin_id}/activate`, '已激活') }, '激活') : null,
+            ? h(Button, { size: 'small', type: 'primary', onClick: () => activateWithDeps(p) }, '激活') : null,
           st === 'activated'
             ? h(Button, { size: 'small', onClick: () => op(`${p.plugin_id}/deactivate`, '已禁用') }, '禁用') : null,
           (st === 'loaded' || st === 'deactivated' || st === 'fault')

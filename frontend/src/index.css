@@ -5,3 +5,227 @@ body,
   margin: 0;
   padding: 0;
 }
+
+/* ============ 主题变量（浅色） ============
+   背景板：背景图放在 frontend/public/assets/backgrounds/ 目录，
+   替换同名字体（whale.jpg）或修改 --nvwa-bg-image 即可更换背景。 */
+:root {
+  color-scheme: light;
+
+  /* 背景板：可替换背景图 + 可读性遮罩（对齐 dsh-web-ui blue-fantasy 三段渐变） */
+  --nvwa-bg-image: url('/assets/backgrounds/whale.jpg');
+  --nvwa-scrim: linear-gradient(
+    rgba(222, 229, 240, 0.26) 0%,
+    rgba(230, 236, 245, 0.30) 55%,
+    rgba(238, 243, 249, 0.34) 100%
+  );
+  --nvwa-bg-layout: #e8edf4;
+
+  /* 毛玻璃面板：容器/悬停/主色底/错误底均为半透明，配合 backdrop-filter */
+  --nvwa-bg-container: rgba(248, 250, 253, 0.62);
+  --nvwa-bg-hover: rgba(26, 40, 66, 0.06);
+  --nvwa-glass-bg: rgba(242, 245, 249, 0.48);
+  --nvwa-border: rgba(29, 42, 68, 0.12);
+  --nvwa-border-strong: rgba(29, 42, 68, 0.20);
+  --nvwa-primary-bg: rgba(214, 228, 244, 0.62);
+  --nvwa-text: rgba(25, 34, 48, 0.88);
+  --nvwa-text-shadow: 0 1px 2px rgba(255, 255, 255, 0.45);
+  --nvwa-text-secondary: rgba(25, 34, 48, 0.55);
+  --nvwa-error-bg: rgba(253, 236, 234, 0.70);
+  --nvwa-error-text: #cf1322;
+
+  /* 侧边栏尺寸（展开/收起） */
+  --nvwa-sider-width: 208px;
+  --nvwa-sider-width-collapsed: 64px;
+}
+
+/* ============ 主题变量（深色） ============ */
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  --nvwa-bg-image: url('/assets/backgrounds/whale.jpg');
+  --nvwa-scrim: linear-gradient(
+    rgba(10, 14, 28, 0.12) 0%,
+    rgba(13, 18, 34, 0.18) 60%,
+    rgba(16, 22, 42, 0.22) 100%
+  );
+  --nvwa-bg-layout: #000000;
+
+  --nvwa-bg-container: rgba(24, 24, 28, 0.72);
+  --nvwa-bg-hover: rgba(255, 255, 255, 0.06);
+  --nvwa-glass-bg: rgba(26, 34, 56, 0.42);
+  --nvwa-border: rgba(255, 255, 255, 0.14);
+  --nvwa-border-strong: rgba(255, 255, 255, 0.26);
+  --nvwa-primary-bg: rgba(28, 38, 64, 0.72);
+  --nvwa-text: rgba(255, 255, 255, 0.90);
+  --nvwa-text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+  --nvwa-text-secondary: rgba(255, 255, 255, 0.45);
+  --nvwa-error-bg: rgba(44, 22, 24, 0.60);
+  --nvwa-error-text: #ff7875;
+}
+
+/* ============ 背景板：背景图 + 遮罩层（参考 dsh-web-ui blue-fantasy） ============
+   同一 background-image 栈：遮罩渐变在上、背景图在下，cover 铺满 + fixed 固定视口 */
+body {
+  background-color: var(--nvwa-bg-layout);
+  background-image: var(--nvwa-scrim), var(--nvwa-bg-image);
+  background-size: cover, cover;
+  background-position: center, center;
+  background-attachment: fixed, fixed;
+  background-repeat: no-repeat, no-repeat;
+  color: var(--nvwa-text);
+  text-shadow: var(--nvwa-text-shadow);
+  transition: background-color 0.28s ease, color 0.28s ease, text-shadow 0.28s ease;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+}
+
+/* ============ 玻璃内容区（Shell 包裹所有页面） ============
+   与导航栏无缝衔接：无内边距、无圆角，中间仅靠侧边栏 1px 分隔线 */
+.nvwa-content {
+  flex: 1;
+  min-width: 0;
+  height: 100vh;
+  padding: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+.nvwa-glass {
+  flex: 1;
+  height: 100%;
+  min-width: 0;
+  padding: 16px;
+  box-sizing: border-box;
+  border-radius: 0;
+  background: var(--nvwa-glass-bg);
+  backdrop-filter: blur(2px) saturate(1.05);
+  -webkit-backdrop-filter: blur(2px) saturate(1.05);
+  transition: background-color 0.28s ease, color 0.28s ease, border-color 0.28s ease;
+  overflow: auto;
+}
+
+/* ============ 侧边栏（CSS 变量驱动宽度 + 平滑过渡 + 细轨） ============ */
+.nvwa-sider {
+  width: var(--nvwa-sider-width);
+  height: 100vh;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--nvwa-glass-bg);
+  backdrop-filter: blur(2px) saturate(1.05);
+  -webkit-backdrop-filter: blur(2px) saturate(1.05);
+  border-right: 1px solid var(--nvwa-border);
+  transition: width 0.22s ease, background-color 0.28s ease, color 0.28s ease,
+    border-color 0.28s ease;
+  overflow: hidden;
+}
+
+.nvwa-sider[data-collapsed='true'] {
+  width: var(--nvwa-sider-width-collapsed);
+}
+
+.nvwa-sider-logo {
+  padding: 18px 16px 8px;
+  font-weight: 700;
+  font-size: 18px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.nvwa-sider[data-collapsed='true'] .nvwa-sider-logo {
+  padding: 18px 0 8px;
+  text-align: center;
+  font-size: 20px;
+}
+
+.nvwa-sider-sub {
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.nvwa-sider-row {
+  padding: 0 16px 12px;
+}
+
+.nvwa-sider[data-collapsed='true'] .nvwa-sider-row {
+  display: none;
+}
+
+.nvwa-sider .ant-menu {
+  background: transparent !important;
+  border-inline-end: none !important;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.nvwa-sider-toggle {
+  margin: 8px auto 14px;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px solid var(--nvwa-border);
+  background: transparent;
+  color: var(--nvwa-text-secondary);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.nvwa-sider-toggle:hover {
+  background: var(--nvwa-bg-hover);
+}
+
+/* 滚动条 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--nvwa-border-strong);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ============ 工具调用卡片透明化（对齐透明对话气泡） ============ */
+.nvwa-tool-card.ant-collapse {
+  background: transparent;
+}
+
+.nvwa-tool-card.ant-collapse > .ant-collapse-item {
+  background: transparent;
+  border-bottom: none;
+}
+
+.nvwa-tool-card .ant-collapse-header {
+  background: transparent !important;
+  padding-inline: 0;
+}
+
+.nvwa-tool-card .ant-collapse-content {
+  background: transparent !important;
+  border-top: none;
+}
+
+.nvwa-tool-card .ant-collapse-content-box {
+  padding-top: 6px;
+}
+
+/* 用户偏好减少动态效果时，关闭主题切换过渡 */
+@media (prefers-reduced-motion: reduce) {
+  body,
+  .nvwa-glass,
+  .nvwa-sider,
+  .nvwa-sider-toggle {
+    transition: none;
+  }
+}

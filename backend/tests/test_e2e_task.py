@@ -16,9 +16,9 @@ def client():
 
 
 def test_e2e_task_mock_flow(client):
-    # 扫描 + 激活示例 Agent
+    # 扫描 + 激活核心编排智能体（唯一任务入口）
     scan_and_reconcile(initial=False)
-    get_runtime().activate("demo-agent-plugin")
+    get_runtime().activate("orchestrator-agent")
 
     conv_id = client.post("/api/v1/conversation/create",
                           json={"title": "e2e"}).json()["conversation_id"]
